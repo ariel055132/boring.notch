@@ -13,6 +13,17 @@ import CoreGraphics
 import os
 
 class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
+    func fetchCodexUsage(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void) {
+        Task {
+            do {
+                let query = try JSONDecoder().decode(CodexUsageRequest.self, from: request)
+                let result = try await CodexUsageProbe.shared.fetch(query)
+                reply(try JSONEncoder().encode(result), nil)
+            } catch {
+                reply(try? JSONEncoder().encode(CodexUsageResult(issue: .from(error))), nil)
+            }
+        }
+    }
     
     @objc func isAccessibilityAuthorized(with reply: @escaping @Sendable (Bool) -> Void) {
         reply(AXIsProcessTrusted())

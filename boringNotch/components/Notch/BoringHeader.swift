@@ -17,12 +17,17 @@ struct BoringHeader: View {
     var body: some View {
         HStack(spacing: 0) {
             HStack {
-                if coordinator.alwaysShowTabs || coordinator.currentView == .weather || (!tvm.isEmpty && enableShelf) {
+                if coordinator.alwaysShowTabs || coordinator.currentView == .weather
+                    || coordinator.currentView == .codexUsage || (!tvm.isEmpty && enableShelf) {
                     TabSelectionView()
                 } else if vm.notchState == .open {
-                    // Keep weather reachable when the user hides the full tab bar.
+                    // Keep the extra pages reachable when the user hides the full tab bar.
                     TabButton(label: "Weather", icon: "cloud.sun.fill", selected: false) {
                         withAnimation(.smooth) { coordinator.currentView = .weather }
+                    }
+                    .frame(height: 26)
+                    TabButton(label: "AI Usage", icon: "chart.bar.xaxis", selected: false) {
+                        withAnimation(.smooth) { coordinator.currentView = .codexUsage }
                     }
                     .frame(height: 26)
                 }

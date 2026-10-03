@@ -2,8 +2,12 @@
 
 本文件保存本次閱讀 repo 的架構與定位結果，供後續修改功能時快速查找相關程式碼。
 
+同步原作者更新、GitHub Desktop 操作與分支合併流程，另見 [FORK_SYNC_GUIDE.md](FORK_SYNC_GUIDE.md)（含流程圖）。
+
+本次需求、討論、進度與回覆的完整文字紀錄，另見 [CONVERSATION_LOG.md](CONVERSATION_LOG.md)。
+
 - 整理日期：2026-10-03。
-- 閱讀基準：commit `d58240c`，專案設定版本 `2.7.3`、build `271`；已補入 2026-10-03 工作目錄中的音樂首頁、月曆、Swift 6 遷移與天氣頁修改（見第 5、8、14、15 節）。
+- 閱讀基準：commit `d58240c`，專案設定版本 `2.7.3`、build `271`；已補入 2026-10-03 的音樂首頁、月曆、Swift 6 遷移、天氣頁與 Codex 用量頁修改（見第 5、8、14、15、16 節）。前四項功能已包含於 `06a8061`，第 16 節為其後新增。
 - 當時規模：123 個 Swift 檔案，約 19,600 行，包含主 App 與 XPC helper。
 - 初次導覽以靜態閱讀為主；月曆修改另通過 Xcode Debug build、日期邏輯檢查與元件渲染檢查，詳見第 8 節。未啟動完整 App 驗證實際 EventKit 資料與滑鼠互動。此文件不是完整 bug audit。
 - 修正前的 warning 分類、數量與定位保留在第 13 節；修正後已切換 Swift 6／complete concurrency，Debug、Release 的 Swift 與 linker 警告均為 0，驗證範圍見第 14 節。
@@ -19,7 +23,8 @@
 | 瀏海寬高、形狀與螢幕頂端定位 | [matters.swift](boringNotch/sizing/matters.swift)、[NotchShape.swift](boringNotch/components/Notch/NotchShape.swift)、[boringNotchApp.swift](boringNotch/boringNotchApp.swift) | `openNotchSize`、`windowSize`、`getClosedNotchSize`、`positionWindow`；也檢查 ViewModel 的 `chinHeight` |
 | 多螢幕、螢幕拔插、偏好螢幕 | [boringNotchApp.swift](boringNotch/boringNotchApp.swift)、[BoringViewCoordinator.swift](boringNotch/BoringViewCoordinator.swift)、[NSScreen+UUID.swift](boringNotch/extensions/NSScreen+UUID.swift) | `windows`、`viewModels`、`adjustWindowPosition`、`screenConfigurationDidChange`；以 display UUID 辨識螢幕 |
 | 鎖定畫面、跨 Spaces、錄影隱藏 | [BoringNotchSkyLightWindow.swift](boringNotch/components/Notch/BoringNotchSkyLightWindow.swift)、[NotchSpaceManager.swift](boringNotch/managers/NotchSpaceManager.swift)、[CGSSpace.swift](boringNotch/private/CGSSpace.swift) | AppDelegate 的 `onScreenLocked`／`onScreenUnlocked`；`showOnLockScreen`、`hideFromScreenRecording` |
-| Home／Shelf／Weather 分頁與預設頁面 | [BoringViewCoordinator.swift](boringNotch/BoringViewCoordinator.swift)、[BoringHeader.swift](boringNotch/components/Notch/BoringHeader.swift)、[TabSelectionView.swift](boringNotch/components/Tabs/TabSelectionView.swift) | `NotchViews.weather`、`currentView`、`alwaysShowTabs`、`openLastTabByDefault`；`BoringViewModel.close` 也會選擇下次頁面；隱藏完整 tab bar 時仍保留天氣入口 |
+| Home／Shelf／Weather／AI Usage 分頁與預設頁面 | [BoringViewCoordinator.swift](boringNotch/BoringViewCoordinator.swift)、[BoringHeader.swift](boringNotch/components/Notch/BoringHeader.swift)、[TabSelectionView.swift](boringNotch/components/Tabs/TabSelectionView.swift) | `NotchViews.weather`／`.codexUsage`、`currentView`、`alwaysShowTabs`、`openLastTabByDefault`；`BoringViewModel.close` 也會選擇下次頁面；隱藏完整 tab bar 時仍保留天氣與用量入口；四頁同時顯示時縮小 tab 水平 padding |
+| Codex 訂閱剩餘額度／重設時間 | [CodexUsageView.swift](boringNotch/components/Usage/CodexUsageView.swift)、[CodexUsageManager.swift](boringNotch/managers/CodexUsageManager.swift)、[CodexUsageService.swift](boringNotch/Providers/CodexUsageService.swift)、[CodexUsageProbe.swift](BoringNotchXPCHelper/CodexUsageProbe.swift) | `fetchCodexUsage` XPC 方法、`CodexUsageLaunch.discover`、`CodexUsageProcess.fetch`、`CodexUsageParser.snapshot`；官方 app-server RPC，每 3 分鐘更新、失敗保留最多 30 分鐘，詳見第 16 節 |
 | 目前地區天氣／逐時與七日預報 | [WeatherView.swift](boringNotch/components/Weather/WeatherView.swift)、[WeatherManager.swift](boringNotch/managers/WeatherManager.swift)、[WeatherService.swift](boringNotch/Providers/WeatherService.swift)、[WeatherLocationService.swift](boringNotch/Providers/WeatherLocationService.swift)、[WeatherModels.swift](boringNotch/models/WeatherModels.swift) | `startBackgroundUpdates`／`stopBackgroundUpdates`、`refreshInterval`／`maximumCacheAge`、`loadIfNeeded`／`refresh`、`forecast(for:)`／`decode`、`locate`／`placeName`；每 3 分鐘背景更新、30 分鐘快取有效期與 API 失敗狀態，詳見第 15 節；AppDelegate 負責啟停與喚醒接線 |
 | 音樂首頁、專輯縮圖、進度條、播放按鈕 | [NotchHomeView.swift](boringNotch/components/Notch/NotchHomeView.swift)、[MusicManager.swift](boringNotch/managers/MusicManager.swift) | 同一檔案含 `MusicPlayerView`、`MusicControlsView`、`MusicSliderView`、`VolumeControlView`、`CustomSlider`；`songInfo(width:)` 在歌名／作者右側顯示小封面，原本左側大型封面／App 圖示區已移除 |
 | 音樂按鈕排列與數量 | [MusicControlButton.swift](boringNotch/models/MusicControlButton.swift)、[MusicSlotConfigurationView.swift](boringNotch/components/Settings/MusicSlotConfigurationView.swift)、[NotchHomeView.swift](boringNotch/components/Notch/NotchHomeView.swift) | `musicControlSlots`、`musicControlSlotLimit`、`activeSlots`、`slotView` |
@@ -89,8 +94,8 @@ scripts/check-weather.sh       編譯／執行天氣資料、HTTP、快取與授
 3. `AppDelegate.applicationDidFinishLaunching` 註冊螢幕／設定／鎖定通知與快捷鍵，建立視窗和拖放監聽，必要時顯示 onboarding。
 4. `createBoringNotchWindow` 建立 `BoringNotchSkyLightWindow`，以 `NSHostingView(rootView: ContentView().environmentObject(viewModel))` 裝入 SwiftUI。
 5. `positionWindow` 將視窗放在目標螢幕頂端中央；`NotchSpaceManager` 管理專用 CGS space 中的視窗集合。
-6. `ContentView.NotchLayout` 依開合、音樂、電池與 HUD 狀態組裝內容；展開時按 `currentView` 切成 `NotchHomeView`、`ShelfView` 或 `WeatherView`。
-7. 結束時 AppDelegate 清理視窗、drag detectors、MusicManager 與權限監聽。
+6. `ContentView.NotchLayout` 依開合、音樂、電池與 HUD 狀態組裝內容；展開時按 `currentView` 切成 `NotchHomeView`、`ShelfView`、`WeatherView` 或 `CodexUsageView`。Weather／Codex 用量的更新由 AppDelegate 啟動，切頁與關閉 notch 不會停止更新。
+7. 結束時 AppDelegate 清理視窗、drag detectors、MusicManager、權限監聽與 Weather／Codex 用量背景工作。喚醒通知同時檢查兩項資料的刷新門檻。
 
 `BoringNotchSkyLightWindow` 是透明的 `NSPanel`，層級為 `.mainMenu + 3`，不能成為 key／main window，並設定跨 Spaces 與全螢幕輔助顯示。鎖定時是否啟用 SkyLight 由 AppDelegate 決定；錄影隱藏選項對應 `sharingType`。
 
@@ -106,6 +111,7 @@ scripts/check-weather.sh       編譯／執行天氣資料、HTTP、快取與授
 | `BoringViewCoordinator.shared` | 全 App | `currentView`、`sneakPeek`、`expandingView`、初次使用與部分偏好、HUD 啟停協調 |
 | `MusicManager.shared` | 全 App | Active controller、曲目、播放進度、封面、歌詞、媒體 UI 狀態 |
 | `WeatherManager.shared` | 全 App | 天氣 snapshot、地區名稱、記憶體快取與載入／錯誤狀態；多視窗共用一次請求 |
+| `CodexUsageManager.shared` | 全 App | Codex 用量、帳號／方案、刷新門檻與錯誤狀態；多視窗共用請求，僅保存記憶體快取 |
 | `ShelfStateViewModel.shared` | 全 App | Shelf 項目與持久化 |
 | `ShelfSelectionModel.shared` | 全 App | Shelf 選取與拖曳狀態 |
 | `SharingStateManager.shared` | 全 App | 分享互動計數與 `preventNotchClose` |
@@ -221,6 +227,7 @@ Manager／Interceptor
 Helper 入口在 [main.swift](BoringNotchXPCHelper/main.swift)，以 `NSXPCListener.service()` 匯出 `BoringNotchXPCHelper`：
 
 - 輔助使用：`AXIsProcessTrusted` 與授權提示。
+- Codex 用量：`fetchCodexUsage` 透過 `CodexUsageProbe` 呼叫既有官方 CLI 的 app-server，只傳回 Codable 用量 snapshot 或固定錯誤碼；兩端共用 `CodexUsageModels.swift`。
 - 鍵盤背光：動態載入私有 CoreBrightness，透過 Objective-C selector 呼叫；共用 client 全部在 `OSAllocatedUnfairLock` 內存取，避免多個 XPC connection 同時操作。
 - 螢幕亮度：私有 DisplayServices，失敗時嘗試 IOKit；目前呼叫使用 `CGMainDisplayID()`。函式指標在首次載入後保持不變，不跨並行工作共享可變 raw pointer 狀態。
 
@@ -479,3 +486,54 @@ bash scripts/check-weather.sh /path/to/DerivedData/Build/Products/Debug
 ```
 
 暫存驗證檔：`/tmp/boring-notch-weather-response.json`、`/tmp/boring-notch-weather-ui/`、`/tmp/boring-notch-weather-refresh-ui/`；本次 Debug／Release 使用第 14 節相同的 DerivedData 與 log 路徑。`Tests/WeatherRegressionChecks.swift` 內的固定測試資料不依賴上述暫存檔或外部 API。未建立 commit、推送或發布。
+
+## 16. Codex 用量分頁（2026-10-03；每日統計更新於 2026-10-04）
+
+目前支援 Codex，tab 名稱為 **AI Usage**，位置在 Weather 右側。沿用 `640 × 190` 的展開尺寸，內部以 **Remaining／Last 7 days** 切換剩餘額度與每日 Token 統計。Remaining 顯示方案、帳號、credits、剩餘比例與重設時間；`Open Codex` 位於右下方 Updated 時間上方，兩者靠右對齊，刷新按鈕與時間同列。Last 7 days 顯示每日柱狀圖、選取日期的 Token 數量、最近 7 天已回報的合計、已回報天數、資料最新日期與最後成功查詢時間。未安裝 CodexBar，也未引入它的套件或背景服務。
+
+```mermaid
+flowchart LR
+    View["CodexUsageView"] --> Manager["CodexUsageManager"]
+    Manager --> Service["CodexUsageService"]
+    Service --> Client["XPCHelperClient"]
+    Client --> Helper["內建 XPC helper"]
+    Helper --> CLI["既有 Codex app-server"]
+    CLI --> API["官方帳號用量"]
+    API --> Snapshot["額度／每日 Token"]
+    Snapshot --> View
+    Manager <--> Cache["按帳號保存資料與冷卻時間"]
+```
+
+| 修改內容 | 定位與行為 |
+|---|---|
+| UI | [CodexUsageView.swift](boringNotch/components/Usage/CodexUsageView.swift)：`usage`、`windowRow`、`historyView`、`tokenChart`、`historyEmptyState`。Remaining／Last 7 days 只切換呈現；點柱狀圖只更改選取日期，不會呼叫 API。額度頁顯示剩餘比例、額度週期、重設時間；小於等於 25% 使用橘色，小於等於 10% 使用紅色；多個模型／額度 bucket 可捲動 |
+| 分頁 | `NotchViews.codexUsage`、`ContentView` switch、`TabSelectionView`、`BoringHeader`。完整 tab bar 隱藏時仍可點擊 AI Usage；Shelf 停用時仍有 Home／Weather／AI Usage 三個 tab |
+| 更新排程 | [CodexUsageManager.swift](boringNotch/managers/CodexUsageManager.swift)：MainActor ObservableObject；AppDelegate 啟動／結束與喚醒接線。額度每 180 秒、歷史每 3,600 秒最多主動查詢一次；自動／手動／切頁／喚醒共用門檻，錯過多次間隔只查詢一次。發送前即保存期限，查詢途中結束 App 也不能繞過。`generation` 阻止取消後的晚到結果更新畫面。任一查詢限流時，兩種查詢共用冷卻：6、12、24、30 分鐘加 0～30 秒隨機延遲；有可辨識的服務等待時間時取較晚期限，不截短較長的服務等待時間。造成限流的查詢成功後才重設退避 |
+| 快取 | `CodexUsageFileStore` 與 `CodexUsageStoredState` 位於 manager 檔案；原子寫入 Application Support 下的 `boringNotch/CodexUsage.json`（sandbox App 使用自己的 container），檔案權限 0600。按 `account/read` 的 email＋plan 隔離，最多保留 5 組；email 缺失時只保存匿名冷卻期限，不持久保存該帳號用量資料；仍不能透過重啟繞過限制。重啟先唯讀確認帳號，再恢復對應快取，未到期不重送統計查詢；限流冷卻跨重啟生效。額度快取最多 30 分鐘，即使查詢 pending 也會到期；歷史資料保留最後成功紀錄並標示更新時間，失敗不刷新時間、不受額度的 30 分鐘到期影響。登出／API-key 模式會隱藏帳號資料並清除當前帳號快取內容，保留查詢期限 |
+| 模型 | [CodexUsageModels.swift](boringNotch/models/CodexUsageModels.swift) 同時加入主 App 與 helper target；包含 Codable／Sendable request、result、account、snapshot、history、daily tokens、issue 與固定錯誤碼。`CodexUsageHistory.recentDays` 產生包含今天的 7 個日曆日期，維持服務的日期字串，不宣稱服務使用本地時區；未回報為 nil、已回報零為 0。`reportedTotal` 只加總選定期間已回報的天數，沒有任何資料或溢位時回傳 nil。`remainingPercent` 由 `100 - usedPercent` 換算；缺值保留 unknown；`isCurrent(at:)` 防止重設時間已過時顯示舊百分比或自行假設恢復為 100% |
+| App 資料入口 | [CodexUsageService.swift](boringNotch/Providers/CodexUsageService.swift) 的 `CodexUsageServiceProviding` 供假資料與未來替換；正式 service 經 `XPCHelperClient.fetchCodexUsage(request)` 呼叫 XPC；request 的 quota／history 旗標允許只確認帳號、只查其中一種或查兩種。result 分別帶回成功資料與固定錯誤／重試時間，歷史失敗不會丟棄成功取得的額度 |
+| CLI 尋找 | [CodexUsageProbe.swift](BoringNotchXPCHelper/CodexUsageProbe.swift) 的 `CodexUsageLaunch.discover`：PATH 中的絕對路徑、Homebrew／系統路徑、使用者 `.local/bin`／`.npm-global/bin`，以及 `/Applications`／使用者 Applications 內 ChatGPT.app 或 Codex.app 的 bundled Codex。沿用 helper 的 CLI 環境（包含既有 CODEX_HOME），不讀取 shell 設定 |
+| RPC 與程序生命週期 | `CodexUsageProcess` 在獨立 serial queue 管理 Process／nonblocking pipe／計時器，順序為 `initialize → initialized → account/read`，依 request 加上 `account/rateLimits/read` 和／或 `account/usage/read`；先前的額度 RPC 若限流／登入失效，不繼續送歷史查詢；20 秒整體 timeout，stdout 上限 1 MiB，查詢後關閉 pipe、終止 child，忽略 SIGTERM 的 child 在一秒後強制結束。沒有 shell、任意命令或路徑的 XPC 入口 |
+| 回應解析 | [CodexUsageParser.swift](BoringNotchXPCHelper/CodexUsageParser.swift)：優先使用 `rateLimitsByLimitId`，回退相容的 `rateLimits`；額度週期使用服務回傳的分鐘數，不寫死為五小時。Codex 主 bucket 與其他 bucket 保留獨立列；credits 不假設為美元或可換算成 tokens。`history` 解析 dailyUsageBuckets，拒絕無效日期、負數及同日衝突資料；相同的重複 bucket 去重、不重複加總；null 與空陣列皆不冒充零使用。`issue` 僅保留固定錯誤類別及可解析的 Retry-After，沒有把原始錯誤或憑證傳入 UI |
+| 登入與權限 | 使用官方 CLI 已登入的 ChatGPT 帳號；API-key 登入顯示獨立說明。認證與可能的 token 更新仍由 Codex 管理，boringNotch 不讀取／另存 auth.json、不匯入瀏覽器 cookies、不把憑證送進 UI、快取或日誌。主 App sandbox 與 helper 原有 entitlements 維持不變 |
+
+官方介面依據：[Codex app-server 的帳號與額度查詢](https://learn.chatgpt.com/docs/app-server#auth-endpoints)、[每日 Token 查詢](https://learn.chatgpt.com/docs/app-server#7-token-usage-chatgpt)。官方未公布每日統計介面的明確 RPM；每小時門檻是本 App 的保守設計，並非不會被限流的保證。一次歷史查詢回傳多天紀錄，7 天圖、當日數字與合計都由同一份資料計算。本功能只查詢用量，不建立 thread／turn、不呼叫模型、不執行 login／logout，也不自動安裝 Codex。帳號無登入或找不到相容 CLI 時顯示狀態說明；`Open Codex` 開啟 Codex 網頁，現有 CLI 的登入仍需由官方工具完成。
+
+### 驗證與後續修改入口
+
+- Debug 與 Release build 通過，沒有新增 Swift／linker warning；保留既有 AppIntents metadata 提示。
+- [CodexUsageProbeChecks.swift](Tests/CodexUsageProbeChecks.swift)：43 項檢查，使用 [離線 JSON-RPC 假程序](Tests/Fixtures/codex-usage-server.py)，涵蓋分段資料、通知穿插、多額度、未知值、credits、登入／API-key 狀態、429、錯誤 JSON、stdout 上限、EOF、timeout、取消與程序回收；核對呼叫清單沒有推論／登入 RPC；另外涵蓋僅確認帳號、僅歷史查詢、null 歷史、429 中止後續查詢、成功額度搭配失敗歷史、Retry-After、無效日期與重複 bucket。
+- [CodexUsageRegressionChecks.swift](Tests/CodexUsageRegressionChecks.swift)：45 項檢查，以虛擬時鐘驗證雙查詢頻率、連點合併、按帳號快取恢復、跨重啟冷卻、查詢中退出、pending 查詢期間獨立到期、缺 email 的跨重啟限制、長服務等待時間、共享退避、部分失敗、登入失效、日期缺漏／零值／7 天合計／DST／整數溢位；以暫存檔驗證快取往返、0600 權限與毀損檔案回退。
+- 既有並行／月曆／XPC 檢查擴充為 63 項並通過，含真實 anonymous XPC 的查詢旗標、額度與歷史 Data 往返和錯誤狀態。天氣未修改，前次 66 項檢查通過。
+- 前版已完成真實 Codex CLI 額度查詢；另以臨時簽署、啟用 sandbox 的 host app，搭配當時 build 的 bundled helper，完成 `sandboxed app → XPC → Codex` 真實查詢。沒有印出憑證或實際帳號內容。每日統計在實作前的可行性確認已透過現有 Codex 登入查詢成功；本次回歸檢查使用離線 fixture，沒有用大量真實請求測試限流。
+- 前版已檢查 11 種額度 UI 狀態；本次以實際 App module／TabSelectionView／CodexUsageView 和離線假資料檢查正常額度、單一額度、窄版額度、7 天圖、空歷史、歷史更新失敗、窄版 7 天圖、點選零用量、點選缺資料共 9 種配置。NSWindow 滑鼠事件確認點選日期後顯示 0 tokens／Not reported，查詢計數保持不變。暫存於 `/tmp/boring-notch-usage-ui/`；NSHostingView 的離屏截圖偶爾省略未重繪圖層，完整畫面與更新區域分別核對。尚未測試 macOS 14／Intel 或完整 App 的真實操作。
+- 2026-10-04 的 Remaining 排版微調：將 `Open Codex` 移至 Updated 上方靠右對齊；精簡帳號欄與額度列間距，讓 Plan usage、連結、更新時間與刷新按鈕整組上移約 7 pt，底部留白接近 Weather，兩筆額度及重設時間仍完整顯示。修改位置為 `usage` 內帳號欄／額度列表的 spacing，以及 `windowRow` 的 spacing，沿用可伸縮排版。Debug build 通過，另以正常、窄版、單筆、多筆與舊資料共 5 種離線配置，加上同尺寸 Weather 畫面檢查排版；640／560 pt 寬預覽的內容高度均為 110 pt，已消除原本 7 pt 的垂直溢出。
+
+```sh
+# 先完成 Debug build；離線檢查不會讀取真實 Codex 憑證或連線。
+bash scripts/check-codex-usage.sh /path/to/DerivedData/Build/Products/Debug
+bash scripts/check-concurrency.sh /path/to/DerivedData/Build/Products/Debug
+bash scripts/check-weather.sh /path/to/DerivedData/Build/Products/Debug
+```
+
+這次的 Debug log 為 `/tmp/boring-notch-codex-usage-debug.log`，Release log 為 `/tmp/boring-notch-swift6-release.log`。沒有修改 signing team、增加 entitlement 或新增 SPM 相依套件。

@@ -28,6 +28,7 @@ public enum NotchViews: Sendable {
     case home
     case shelf
     case weather
+    case codexUsage
 }
 
 enum SettingsEnum {

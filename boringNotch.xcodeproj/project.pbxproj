@@ -42,7 +42,6 @@
 		1160F8D82DD98230006FBB94 /* NotchShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1160F8D72DD98230006FBB94 /* NotchShape.swift */; };
 		1163988D2DF5CAB40052E6AF /* EventModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1163988C2DF5CAB40052E6AF /* EventModel.swift */; };
 		1163988F2DF5CC870052E6AF /* CalendarModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1163988E2DF5CC870052E6AF /* CalendarModel.swift */; };
-		E546A10130CFF100001CA100 /* CalendarMonth.swift in Sources */ = {isa = PBXBuildFile; fileRef = E546A10230CFF100001CA100 /* CalendarMonth.swift */; };
 		116398962DF5D6C00052E6AF /* CalendarServiceProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116398952DF5D6C00052E6AF /* CalendarServiceProviding.swift */; };
 		117AB5172E30E09C00558921 /* MediaRemoteAdapter.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 112B0EBA2E30DD5000562D6C /* MediaRemoteAdapter.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		118D1FD12E98FF5F00A2FF63 /* SharingStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118D1FD02E98FF5F00A2FF63 /* SharingStateManager.swift */; };
@@ -115,6 +114,11 @@
 		9A987A0D2C73CA66005CA465 /* ShelfView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A987A032C73CA66005CA465 /* ShelfView.swift */; };
 		9A987A102C73CA8D005CA465 /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 9A987A0F2C73CA8D005CA465 /* Collections */; };
 		9AB0C6BD2C73C9CB00F7CD30 /* NotchHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AB0C6BB2C73C9CB00F7CD30 /* NotchHomeView.swift */; };
+		AFC301000000000000000002 /* WeatherModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC301000000000000000001 /* WeatherModels.swift */; };
+		AFC301000000000000000004 /* WeatherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC301000000000000000003 /* WeatherService.swift */; };
+		AFC301000000000000000006 /* WeatherLocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC301000000000000000005 /* WeatherLocationService.swift */; };
+		AFC301000000000000000008 /* WeatherManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC301000000000000000007 /* WeatherManager.swift */; };
+		AFC30100000000000000000A /* WeatherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC301000000000000000009 /* WeatherView.swift */; };
 		B10348D92C74E56000475897 /* ConditionalModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10348D82C74E56000475897 /* ConditionalModifier.swift */; };
 		B10F84A32C6C9596009F3026 /* TestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10F84A22C6C9596009F3026 /* TestView.swift */; };
 		B141C2412CA5F53F00AC8CC8 /* SparkleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B141C2402CA5F53E00AC8CC8 /* SparkleView.swift */; };
@@ -142,12 +146,13 @@
 		B1F0A0022E60000100000001 /* BrightnessManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1F0A0012E60000100000001 /* BrightnessManager.swift */; };
 		B1F747F92EC7E94000F841DB /* LottieView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1F747F82EC7E94000F841DB /* LottieView.swift */; };
 		B1FEB4992C7686630066EBBC /* PanGesture.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1FEB4982C7686630066EBBC /* PanGesture.swift */; };
+		E546A10130CFF100001CA100 /* CalendarMonth.swift in Sources */ = {isa = PBXBuildFile; fileRef = E546A10230CFF100001CA100 /* CalendarMonth.swift */; };
 		F38DE6482D8243E7008B5C6D /* BatteryActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F38DE6472D8243E2008B5C6D /* BatteryActivityManager.swift */; };
-		AFC301000000000000000002 /* WeatherModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC301000000000000000001 /* WeatherModels.swift */; };
-		AFC301000000000000000004 /* WeatherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC301000000000000000003 /* WeatherService.swift */; };
-		AFC301000000000000000006 /* WeatherLocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC301000000000000000005 /* WeatherLocationService.swift */; };
-		AFC301000000000000000008 /* WeatherManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC301000000000000000007 /* WeatherManager.swift */; };
-		AFC30100000000000000000A /* WeatherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC301000000000000000009 /* WeatherView.swift */; };
+		AFC302000000000000000002 /* CodexUsageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC302000000000000000001 /* CodexUsageModels.swift */; };
+		AFC302000000000000000004 /* CodexUsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC302000000000000000003 /* CodexUsageService.swift */; };
+		AFC302000000000000000006 /* CodexUsageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC302000000000000000005 /* CodexUsageManager.swift */; };
+		AFC302000000000000000008 /* CodexUsageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC302000000000000000007 /* CodexUsageView.swift */; };
+		AFC30200000000000000000A /* CodexUsageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC302000000000000000001 /* CodexUsageModels.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -218,7 +223,6 @@
 		1160F8D72DD98230006FBB94 /* NotchShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchShape.swift; sourceTree = "<group>"; };
 		1163988C2DF5CAB40052E6AF /* EventModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventModel.swift; sourceTree = "<group>"; };
 		1163988E2DF5CC870052E6AF /* CalendarModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarModel.swift; sourceTree = "<group>"; };
-		E546A10230CFF100001CA100 /* CalendarMonth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarMonth.swift; sourceTree = "<group>"; };
 		116398952DF5D6C00052E6AF /* CalendarServiceProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarServiceProviding.swift; sourceTree = "<group>"; };
 		118D1FD02E98FF5F00A2FF63 /* SharingStateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharingStateManager.swift; sourceTree = "<group>"; };
 		118EBE242E92DCCB00D54B5A /* AssociatedObject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssociatedObject.swift; sourceTree = "<group>"; };
@@ -290,6 +294,11 @@
 		9A0887342C7AFF8E00C160EA /* TabSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabSelectionView.swift; sourceTree = "<group>"; };
 		9A987A032C73CA66005CA465 /* ShelfView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ShelfView.swift; sourceTree = "<group>"; };
 		9AB0C6BB2C73C9CB00F7CD30 /* NotchHomeView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NotchHomeView.swift; sourceTree = "<group>"; };
+		AFC301000000000000000001 /* WeatherModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherModels.swift; sourceTree = "<group>"; };
+		AFC301000000000000000003 /* WeatherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherService.swift; sourceTree = "<group>"; };
+		AFC301000000000000000005 /* WeatherLocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherLocationService.swift; sourceTree = "<group>"; };
+		AFC301000000000000000007 /* WeatherManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherManager.swift; sourceTree = "<group>"; };
+		AFC301000000000000000009 /* WeatherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherView.swift; sourceTree = "<group>"; };
 		B10348D82C74E56000475897 /* ConditionalModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConditionalModifier.swift; sourceTree = "<group>"; };
 		B10F84A22C6C9596009F3026 /* TestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestView.swift; sourceTree = "<group>"; };
 		B141C2402CA5F53E00AC8CC8 /* SparkleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkleView.swift; sourceTree = "<group>"; };
@@ -314,12 +323,12 @@
 		B1F0A0012E60000100000001 /* BrightnessManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrightnessManager.swift; sourceTree = "<group>"; };
 		B1F747F82EC7E94000F841DB /* LottieView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LottieView.swift; sourceTree = "<group>"; };
 		B1FEB4982C7686630066EBBC /* PanGesture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanGesture.swift; sourceTree = "<group>"; };
+		E546A10230CFF100001CA100 /* CalendarMonth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarMonth.swift; sourceTree = "<group>"; };
 		F38DE6472D8243E2008B5C6D /* BatteryActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryActivityManager.swift; sourceTree = "<group>"; };
-		AFC301000000000000000001 /* WeatherModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherModels.swift; sourceTree = "<group>"; };
-		AFC301000000000000000003 /* WeatherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherService.swift; sourceTree = "<group>"; };
-		AFC301000000000000000005 /* WeatherLocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherLocationService.swift; sourceTree = "<group>"; };
-		AFC301000000000000000007 /* WeatherManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherManager.swift; sourceTree = "<group>"; };
-		AFC301000000000000000009 /* WeatherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherView.swift; sourceTree = "<group>"; };
+		AFC302000000000000000001 /* CodexUsageModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexUsageModels.swift; sourceTree = "<group>"; };
+		AFC302000000000000000003 /* CodexUsageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexUsageService.swift; sourceTree = "<group>"; };
+		AFC302000000000000000005 /* CodexUsageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexUsageManager.swift; sourceTree = "<group>"; };
+		AFC302000000000000000007 /* CodexUsageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexUsageView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -450,6 +459,7 @@
 			children = (
 				AFC301000000000000000005 /* WeatherLocationService.swift */,
 				AFC301000000000000000003 /* WeatherService.swift */,
+				AFC302000000000000000003 /* CodexUsageService.swift */,
 				116398952DF5D6C00052E6AF /* CalendarServiceProviding.swift */,
 			);
 			path = Providers;
@@ -499,6 +509,7 @@
 			isa = PBXGroup;
 			children = (
 				AFC30100000000000000000B /* Weather */,
+				AFC302000000000000000009 /* Usage */,
 				B141C23B2CA5F50900AC8CC8 /* Onboarding */,
 				B1C448992C97375A001F0858 /* Tips */,
 				14C08BB72C8DE49E000F8AA0 /* Calendar */,
@@ -524,6 +535,7 @@
 			isa = PBXGroup;
 			children = (
 				AFC301000000000000000007 /* WeatherManager.swift */,
+				AFC302000000000000000005 /* CodexUsageManager.swift */,
 				11D58EA12E760AE100FA8377 /* ImageService.swift */,
 				F38DE6472D8243E2008B5C6D /* BatteryActivityManager.swift */,
 				112FB7342CCF16F70015238C /* NotchSpaceManager.swift */,
@@ -641,6 +653,7 @@
 			isa = PBXGroup;
 			children = (
 				AFC301000000000000000001 /* WeatherModels.swift */,
+				AFC302000000000000000001 /* CodexUsageModels.swift */,
 				11F748812ECB07A400F841DB /* MusicControlButton.swift */,
 				118D1FD02E98FF5F00A2FF63 /* SharingStateManager.swift */,
 				1163988E2DF5CC870052E6AF /* CalendarModel.swift */,
@@ -672,6 +685,14 @@
 				1113ABC42E80E27000EC13B2 /* Views */,
 			);
 			path = Shelf;
+			sourceTree = "<group>";
+		};
+		AFC30100000000000000000B /* Weather */ = {
+			isa = PBXGroup;
+			children = (
+				AFC301000000000000000009 /* WeatherView.swift */,
+			);
+			path = Weather;
 			sourceTree = "<group>";
 		};
 		B141C23B2CA5F50900AC8CC8 /* Onboarding */ = {
@@ -773,12 +794,12 @@
 			path = Tips;
 			sourceTree = "<group>";
 		};
-		AFC30100000000000000000B /* Weather */ = {
+		AFC302000000000000000009 /* Usage */ = {
 			isa = PBXGroup;
 			children = (
-				AFC301000000000000000009 /* WeatherView.swift */,
+				AFC302000000000000000007 /* CodexUsageView.swift */,
 			);
-			path = Weather;
+			path = Usage;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -922,6 +943,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AFC30200000000000000000A /* CodexUsageModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -960,6 +982,10 @@
 				1163988F2DF5CC870052E6AF /* CalendarModel.swift in Sources */,
 				E546A10130CFF100001CA100 /* CalendarMonth.swift in Sources */,
 				AFC30100000000000000000A /* WeatherView.swift in Sources */,
+				AFC302000000000000000002 /* CodexUsageModels.swift in Sources */,
+				AFC302000000000000000004 /* CodexUsageService.swift in Sources */,
+				AFC302000000000000000006 /* CodexUsageManager.swift in Sources */,
+				AFC302000000000000000008 /* CodexUsageView.swift in Sources */,
 				AFC301000000000000000008 /* WeatherManager.swift in Sources */,
 				AFC301000000000000000006 /* WeatherLocationService.swift in Sources */,
 				AFC301000000000000000004 /* WeatherService.swift in Sources */,

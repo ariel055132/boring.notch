@@ -351,6 +351,8 @@ struct ContentView: View {
                         ShelfView()
                     case .weather:
                         WeatherView()
+                    case .codexUsage:
+                        CodexUsageView()
                     }
                 }
                 .transition(

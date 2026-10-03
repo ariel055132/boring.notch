@@ -4,6 +4,18 @@ import Foundation
 private final class StubHelper: NSObject, BoringNotchXPCHelperProtocol, Sendable {
     let authorized: Bool
     init(authorized: Bool) { self.authorized = authorized }
+    func fetchCodexUsage(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void) {
+        if authorized {
+            let snapshot = CodexUsageSnapshot(accountEmail: nil, plan: "plus", windows: [],
+                                              credits: 42, unlimitedCredits: false, fetchedAt: Date())
+            let query = try? JSONDecoder().decode(CodexUsageRequest.self, from: request)
+            let result = CodexUsageResult(account: .init(email: nil, plan: "plus"), quota: query?.quota == true ? snapshot : nil,
+                                          history: query?.history == true ? .init(days: [.init(date: "2026-10-02", tokens: 1234)], fetchedAt: Date()) : nil)
+            reply(try? JSONEncoder().encode(result), nil)
+        } else {
+            reply(nil, CodexUsageFailure.notSignedIn.rawValue)
+        }
+    }
     func isAccessibilityAuthorized(with reply: @escaping @Sendable (Bool) -> Void) {
         let value = authorized
         DispatchQueue.global().async { reply(value) }
@@ -76,6 +88,9 @@ enum XPCRegressionChecks {
         try check(await client.currentScreenBrightness() == 0.5, "Screen brightness NSNumber was not decoded")
         try check(await client.setScreenBrightness(1), "Screen command argument was not delivered")
         try check(connections.count == 1, "Calls must reuse one live XPC connection")
+        let usage = try await client.fetchCodexUsage(.init(quota: true, history: true))
+        try check(usage.quota?.credits == 42 && usage.quota?.plan == "plus", "Codex usage must survive real XPC Data serialization")
+        try check(usage.history?.days.first?.tokens == 1234, "History flags and daily tokens must survive the XPC boundary")
 
         client.startMonitoringAccessibilityAuthorization(every: 0.01)
         try check(client.isMonitoring, "Authorization monitoring must start")
@@ -101,6 +116,12 @@ enum XPCRegressionChecks {
         let deniedClient = XPCHelperClient(connectionFactory: { NSXPCConnection(listenerEndpoint: deniedListener.endpoint) })
         try check(!(await deniedClient.ensureAccessibilityAuthorization(promptIfNeeded: false)), "Denied authorization must remain false")
         try check(await deniedClient.currentKeyboardBrightness() == nil, "Unavailable brightness must remain nil")
+        do {
+            _ = try await deniedClient.fetchCodexUsage(.init(quota: true))
+            try check(false, "Codex login failure must not be swallowed")
+        } catch let failure as CodexUsageFailure {
+            try check(failure == .notSignedIn, "Codex XPC errors must preserve their typed state")
+        }
         return checks
     }
 }

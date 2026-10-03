@@ -705,7 +705,16 @@
         }
       }
     },
+    "%@ credits" : {
+
+    },
+    "%@ tokens" : {
+
+    },
     "%@%%" : {
+
+    },
+    "%@%% left" : {
 
     },
     "%@C" : {
@@ -910,6 +919,15 @@
           }
         }
       }
+    },
+    "%lld hours" : {
+
+    },
+    "%lld minutes" : {
+
+    },
+    "%lld of 7 days reported" : {
+
     },
     "%lld%%" : {
       "localizations" : {
@@ -4727,6 +4745,18 @@
         }
       }
     },
+    "Checking your Codex account and reported token usage…" : {
+
+    },
+    "Checking your Codex usage…" : {
+
+    },
+    "Checks at most once an hour." : {
+
+    },
+    "Checks paused until %@" : {
+
+    },
     "Choose a Music Source" : {
       "localizations" : {
         "ar" : {
@@ -5630,6 +5660,39 @@
         }
       }
     },
+    "Codex" : {
+
+    },
+    "Codex · 7 days" : {
+
+    },
+    "Codex could not be found. Open your Codex app or install the official Codex CLI, then refresh." : {
+
+    },
+    "Codex has no usage limits available for this account." : {
+
+    },
+    "Codex has not reported daily token usage for this account yet." : {
+
+    },
+    "Codex is limiting usage checks. The next update will wait longer." : {
+
+    },
+    "Codex is using an API key. Sign in with ChatGPT to see your plan's remaining usage." : {
+
+    },
+    "Codex returned an unreadable usage response." : {
+
+    },
+    "Codex took too long to respond. Updates will retry automatically." : {
+
+    },
+    "Codex usage" : {
+
+    },
+    "Codex usage view" : {
+
+    },
     "Color Presets" : {
       "localizations" : {
         "ar" : {
@@ -6229,6 +6292,12 @@
           }
         }
       }
+    },
+    "Could not retrieve Codex usage. Updates will retry automatically." : {
+
+    },
+    "Could not save usage data and cooldowns on this Mac." : {
+
     },
     "Could not update weather. Check your internet connection." : {
 
@@ -7035,6 +7104,24 @@
           }
         }
       }
+    },
+    "Daily" : {
+
+    },
+    "Daily token checks are limited to once an hour. Switching dates uses cached data." : {
+
+    },
+    "Daily token usage" : {
+
+    },
+    "Daily usage is waiting for the next scheduled check." : {
+
+    },
+    "Data through %@" : {
+
+    },
+    "Dates are reported by Codex. Missing days are not counted as zero." : {
+
     },
     "Default" : {
       "localizations" : {
@@ -11977,6 +12064,12 @@
         }
       }
     },
+    "Last 7 days" : {
+
+    },
+    "Last known usage" : {
+
+    },
     "Layout Preview" : {
       "localizations" : {
         "ar" : {
@@ -15090,6 +15183,12 @@
         }
       }
     },
+    "No percentage limits reported" : {
+
+    },
+    "No reported data" : {
+
+    },
     "Not Now" : {
       "localizations" : {
         "ar" : {
@@ -15189,6 +15288,9 @@
           }
         }
       }
+    },
+    "Not reported" : {
+
     },
     "Notch behavior" : {
       "localizations" : {
@@ -15689,6 +15791,9 @@
           }
         }
       }
+    },
+    "Open Codex" : {
+
     },
     "Open Notch" : {
       "localizations" : {
@@ -16296,6 +16401,9 @@
         }
       }
     },
+    "Plan usage" : {
+
+    },
     "Plugged In" : {
       "localizations" : {
         "ar" : {
@@ -16497,6 +16605,9 @@
       }
     },
     "Previous month" : {
+
+    },
+    "Primary limit" : {
 
     },
     "Progress bar style" : {
@@ -17005,6 +17116,9 @@
     "Rain showers" : {
 
     },
+    "Refresh Codex usage" : {
+
+    },
     "Refresh weather" : {
 
     },
@@ -17107,6 +17221,9 @@
           }
         }
       }
+    },
+    "Remaining" : {
+
     },
     "Remember last tab" : {
       "localizations" : {
@@ -17808,6 +17925,12 @@
         }
       }
     },
+    "Reset time passed · waiting for an update" : {
+
+    },
+    "Reset time unavailable" : {
+
+    },
     "Reset to Defaults" : {
       "localizations" : {
         "ar" : {
@@ -17907,6 +18030,9 @@
           }
         }
       }
+    },
+    "Resets %@" : {
+
     },
     "Restart" : {
       "extractionState" : "stale",
@@ -18209,6 +18335,12 @@
           }
         }
       }
+    },
+    "Secondary limit" : {
+
+    },
+    "See the remaining usage for your Codex plan." : {
+
     },
     "Select the music source you want to use. You can change this later in the app settings." : {
       "localizations" : {
@@ -20313,6 +20445,12 @@
         }
       }
     },
+    "Showing the last successful update." : {
+
+    },
+    "Sign in to Codex with your ChatGPT account, then refresh." : {
+
+    },
     "Slider color" : {
       "localizations" : {
         "ar" : {
@@ -21321,6 +21459,9 @@
         }
       }
     },
+    "The last usage data is out of date. Waiting for a successful update." : {
+
+    },
     "The weather service is unavailable. Please try again later." : {
 
     },
@@ -21733,6 +21874,9 @@
         }
       }
     },
+    "tokens reported" : {
+
+    },
     "Try again" : {
 
     },
@@ -21836,6 +21980,9 @@
         }
       }
     },
+    "Unavailable" : {
+
+    },
     "Uninstall" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -21936,6 +22083,9 @@
           }
         }
       }
+    },
+    "Unlimited credits" : {
+
     },
     "Unlock advanced features and improve your experience. Upgrade now for more customizations!" : {
       "localizations" : {
@@ -22237,6 +22387,9 @@
         }
       }
     },
+    "Update Codex to a version that supports usage queries, then refresh." : {
+
+    },
     "Updated %@" : {
 
     },
@@ -22249,6 +22402,12 @@
           }
         }
       }
+    },
+    "Updates automatically every 3 minutes." : {
+
+    },
+    "Updates will retry after a cooldown." : {
+
     },
     "Upgrade to Pro" : {
       "localizations" : {
@@ -22349,6 +22508,9 @@
           }
         }
       }
+    },
+    "Usage checks are limited to once every 3 minutes, with a longer wait if Codex requests it." : {
+
     },
     "Use current location" : {
 
@@ -22972,6 +23134,9 @@
 
     },
     "Weather updates automatically every 3 minutes." : {
+
+    },
+    "Weekly" : {
 
     },
     "Welcome" : {

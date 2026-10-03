@@ -18,7 +18,8 @@ struct TabModel: Identifiable, Sendable {
 let tabs = [
     TabModel(label: "Home", icon: "house.fill", view: .home),
     TabModel(label: "Shelf", icon: "tray.fill", view: .shelf),
-    TabModel(label: "Weather", icon: "cloud.sun.fill", view: .weather)
+    TabModel(label: "Weather", icon: "cloud.sun.fill", view: .weather),
+    TabModel(label: "AI Usage", icon: "chart.bar.xaxis", view: .codexUsage)
 ]
 
 struct TabSelectionView: View {
@@ -28,7 +29,8 @@ struct TabSelectionView: View {
     var body: some View {
         HStack(spacing: 0) {
             ForEach(tabs.filter { enableShelf || $0.view != .shelf }) { tab in
-                    TabButton(label: tab.label, icon: tab.icon, selected: coordinator.currentView == tab.view) {
+                    TabButton(label: tab.label, icon: tab.icon, selected: coordinator.currentView == tab.view,
+                              horizontalPadding: enableShelf ? 10 : 15) {
                         withAnimation(.smooth) {
                             coordinator.currentView = tab.view
                         }
