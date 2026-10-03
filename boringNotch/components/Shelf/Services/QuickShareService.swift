@@ -16,6 +16,7 @@ struct QuickShareProvider: Identifiable, Hashable, Sendable {
     var supportsRawText: Bool
 }
 
+@MainActor
 class QuickShareService: ObservableObject {
     static let shared = QuickShareService()
     
@@ -183,10 +184,10 @@ private class SharingServiceDelegate: NSObject {}
     }
 
     private func resolveShelfItemBookmark(for fileURL: URL) async -> URL? {
-        let items = await ShelfStateViewModel.shared.items
+        let items = ShelfStateViewModel.shared.items
 
         for itm in items {
-            if let resolved = await ShelfStateViewModel.shared.resolveAndUpdateBookmark(for: itm) {
+            if let resolved = ShelfStateViewModel.shared.resolveAndUpdateBookmark(for: itm) {
                 if resolved.standardizedFileURL.path == fileURL.standardizedFileURL.path {
                     return resolved
                 }
@@ -200,7 +201,7 @@ private class SharingServiceDelegate: NSObject {}
 // MARK: - App Storage Extension for Provider Selection
 
 extension QuickShareProvider {
-    static var defaultProvider: QuickShareProvider {
+    @MainActor static var defaultProvider: QuickShareProvider {
         let svc = QuickShareService.shared
 
         if let airdrop = svc.availableProviders.first(where: { $0.id == "AirDrop" }) {

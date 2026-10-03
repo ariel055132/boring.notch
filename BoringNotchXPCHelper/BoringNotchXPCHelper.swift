@@ -6,13 +6,15 @@
 //
 
 import Foundation
-import ApplicationServices
+// Accessibility's imported C constants predate Swift concurrency annotations.
+@preconcurrency import ApplicationServices
 import IOKit
 import CoreGraphics
+import os
 
 class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
     
-    @objc func isAccessibilityAuthorized(with reply: @escaping (Bool) -> Void) {
+    @objc func isAccessibilityAuthorized(with reply: @escaping @Sendable (Bool) -> Void) {
         reply(AXIsProcessTrusted())
     }
 
@@ -21,7 +23,7 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         AXIsProcessTrustedWithOptions(options)
     }
 
-    @objc func ensureAccessibilityAuthorization(_ promptIfNeeded: Bool, with reply: @escaping (Bool) -> Void) {
+    @objc func ensureAccessibilityAuthorization(_ promptIfNeeded: Bool, with reply: @escaping @Sendable (Bool) -> Void) {
         if AXIsProcessTrusted() {
             reply(true)
             return
@@ -86,27 +88,28 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         }
     }
 
-    private static let keyboardClient = KeyboardBrightnessClient()
+    // XPC may service multiple connections concurrently; serialize the private client.
+    private static let keyboardClient = OSAllocatedUnfairLock(uncheckedState: KeyboardBrightnessClient())
 
-    @objc func isKeyboardBrightnessAvailable(with reply: @escaping (Bool) -> Void) {
-        reply(Self.keyboardClient.isAvailable)
+    @objc func isKeyboardBrightnessAvailable(with reply: @escaping @Sendable (Bool) -> Void) {
+        reply(Self.keyboardClient.withLock { $0.isAvailable })
     }
 
-    @objc func currentKeyboardBrightness(with reply: @escaping (NSNumber?) -> Void) {
-        reply(Self.keyboardClient.currentBrightness().map { NSNumber(value: $0) })
+    @objc func currentKeyboardBrightness(with reply: @escaping @Sendable (NSNumber?) -> Void) {
+        reply(Self.keyboardClient.withLock { $0.currentBrightness() }.map { NSNumber(value: $0) })
     }
 
-    @objc func setKeyboardBrightness(_ value: Float, with reply: @escaping (Bool) -> Void) {
-        reply(Self.keyboardClient.setBrightness(value))
+    @objc func setKeyboardBrightness(_ value: Float, with reply: @escaping @Sendable (Bool) -> Void) {
+        reply(Self.keyboardClient.withLock { $0.setBrightness(value) })
     }
     // MARK: - Screen Brightness (moved from client app into helper)
 
-    @objc func isScreenBrightnessAvailable(with reply: @escaping (Bool) -> Void) {
+    @objc func isScreenBrightnessAvailable(with reply: @escaping @Sendable (Bool) -> Void) {
         var b: Float = 0
         reply(displayServicesGetBrightness(displayID: CGMainDisplayID(), out: &b) || ioServiceFor(displayID: CGMainDisplayID()) != nil)
     }
 
-    @objc func currentScreenBrightness(with reply: @escaping (NSNumber?) -> Void) {
+    @objc func currentScreenBrightness(with reply: @escaping @Sendable (NSNumber?) -> Void) {
         var b: Float = 0
         if displayServicesGetBrightness(displayID: CGMainDisplayID(), out: &b) {
             reply(NSNumber(value: b))
@@ -124,7 +127,7 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         reply(nil)
     }
 
-    @objc func setScreenBrightness(_ value: Float, with reply: @escaping (Bool) -> Void) {
+    @objc func setScreenBrightness(_ value: Float, with reply: @escaping @Sendable (Bool) -> Void) {
         let clamped = max(0, min(1, value))
         if displayServicesSetBrightness(displayID: CGMainDisplayID(), value: clamped) {
             reply(true)
@@ -141,9 +144,7 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
 
     // MARK: - Private helpers for DisplayServices / IOKit access
     private func displayServicesGetBrightness(displayID: CGDirectDisplayID, out: inout Float) -> Bool {
-        guard let sym = dlsym(DisplayServicesHandle.handle, "DisplayServicesGetBrightness") else { return false }
-        typealias Fn = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
-        let fn = unsafeBitCast(sym, to: Fn.self)
+        guard let fn = DisplayServicesHandle.functions.get else { return false }
         var tmp: Float = 0
         let r = fn(displayID, &tmp)
         if r == 0 { out = tmp; return true }
@@ -151,9 +152,7 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
     }
 
     private func displayServicesSetBrightness(displayID: CGDirectDisplayID, value: Float) -> Bool {
-        guard let sym = dlsym(DisplayServicesHandle.handle, "DisplayServicesSetBrightness") else { return false }
-        typealias Fn = @convention(c) (CGDirectDisplayID, Float) -> Int32
-        let fn = unsafeBitCast(sym, to: Fn.self)
+        guard let fn = DisplayServicesHandle.functions.set else { return false }
         return fn(displayID, value) == 0
     }
 
@@ -177,15 +176,24 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
 
     // MARK: - Helper handle for private framework
     private enum DisplayServicesHandle {
-        static let handle: UnsafeMutableRawPointer? = {
+        typealias GetBrightness = @convention(c) @Sendable (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
+        typealias SetBrightness = @convention(c) @Sendable (CGDirectDisplayID, Float) -> Int32
+
+        // Resolve immutable function pointers once; keep the library loaded for process lifetime.
+        static let functions: (get: GetBrightness?, set: SetBrightness?) = {
             let paths = [
                 "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices",
                 "/System/Library/PrivateFrameworks/DisplayServices.framework/Versions/Current/DisplayServices"
             ]
             for p in paths {
-                if let h = dlopen(p, RTLD_LAZY) { return h }
+                if let h = dlopen(p, RTLD_LAZY) {
+                    return (
+                        dlsym(h, "DisplayServicesGetBrightness").map { unsafeBitCast($0, to: GetBrightness.self) },
+                        dlsym(h, "DisplayServicesSetBrightness").map { unsafeBitCast($0, to: SetBrightness.self) }
+                    )
+                }
             }
-            return nil
+            return (nil, nil)
         }()
     }
 }

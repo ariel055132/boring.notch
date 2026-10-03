@@ -46,7 +46,7 @@ final class NSScreenUUIDCache {
         setupObserver()
     }
     
-    deinit {
+    isolated deinit {
         if let observer = observer {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -58,7 +58,10 @@ final class NSScreenUUIDCache {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.rebuildCache()
+            // NotificationCenter delivers this observer synchronously on the main queue.
+            MainActor.assumeIsolated {
+                self?.rebuildCache()
+            }
         }
     }
     

@@ -7,53 +7,44 @@
 
 import Cocoa
 
-class ShareServiceFinder: NSObject, NSSharingServicePickerDelegate {
-
-    @MainActor
+@MainActor
+final class ShareServiceFinder: NSObject, @MainActor NSSharingServicePickerDelegate {
     private var onServicesCaptured: (([NSSharingService]) -> Void)?
 
-    /// Returns share services asynchronously without blocking the UI
-    @MainActor
+    /// Keep AppKit sharing services on the main actor, including the timeout path.
     func findApplicableServices(for items: [Any], timeout: TimeInterval = 2.0) async -> [NSSharingService] {
-
         let dummyView = NSView(frame: .zero)
         let picker = NSSharingServicePicker(items: items)
         picker.delegate = self
+        defer { picker.delegate = nil; onServicesCaptured = nil }
 
-        return await withCheckedContinuation { continuation in
+        var services: [NSSharingService] = []
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             var didResume = false
-
-            // Capture services callback
-            Task { @MainActor in
-                self.onServicesCaptured = { services in
-                    guard !didResume else { return }
-                    didResume = true
-                    continuation.resume(returning: services)
-                }
-            }
-
-            picker.show(relativeTo: dummyView.bounds, of: dummyView, preferredEdge: .minY)
-
-
-            // Timeout task
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(timeout))
+            var timeoutTask: Task<Void, Never>?
+            onServicesCaptured = { captured in
                 guard !didResume else { return }
                 didResume = true
-                print("Warning: timed out waiting for sharing services")
-                continuation.resume(returning: [])
+                services = captured
+                timeoutTask?.cancel()
+                continuation.resume()
             }
+            timeoutTask = Task { @MainActor in
+                do { try await Task.sleep(for: .seconds(timeout)) }
+                catch { return }
+                guard !didResume else { return }
+                didResume = true
+                continuation.resume()
+            }
+            picker.show(relativeTo: dummyView.bounds, of: dummyView, preferredEdge: .minY)
         }
+        return services
     }
-
-    // MARK: NSSharingServicePickerDelegate
 
     func sharingServicePicker(_ picker: NSSharingServicePicker,
                               sharingServicesForItems items: [Any],
                               proposedSharingServices proposed: [NSSharingService]) -> [NSSharingService] {
-        Task { @MainActor in
-            self.onServicesCaptured?(proposed)
-        }
+        onServicesCaptured?(proposed)
         return proposed
     }
 }

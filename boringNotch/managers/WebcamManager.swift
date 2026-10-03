@@ -2,312 +2,208 @@
 //  WebcamManager.swift
 //  boringNotch
 //
-//  Created by Harsh Vardhan  Goswami  on 19/08/24.
+//  Created by Harsh Vardhan Goswami on 19/08/24.
 //
 import AVFoundation
 import SwiftUI
 
-class WebcamManager: NSObject, ObservableObject {
+protocol CameraCaptureControlling: Sendable {
+    func start() async throws
+    func stop() async
+    @MainActor func makePreviewLayer() -> AVCaptureVideoPreviewLayer
+}
+
+@MainActor
+final class WebcamManager: NSObject, ObservableObject {
     static let shared = WebcamManager()
-    
-    @Published var previewLayer: AVCaptureVideoPreviewLayer? {
-        didSet {
-            objectWillChange.send()
-        }
-    }
-    
-    private var captureSession: AVCaptureSession?
-    @Published var isSessionRunning: Bool = false {
-        didSet {
-            objectWillChange.send()
-        }
-    }
-    
-    @Published var authorizationStatus: AVAuthorizationStatus = .notDetermined {
-        didSet {
-            objectWillChange.send()
-        }
-    }
-    
-    @Published var cameraAvailable: Bool = false {
-        didSet {
-            objectWillChange.send()
-        }
+
+    @Published var previewLayer: AVCaptureVideoPreviewLayer?
+    @Published var isSessionRunning = false
+    @Published var authorizationStatus: AVAuthorizationStatus = .notDetermined
+    @Published var cameraAvailable = false
+
+    private let capture: any CameraCaptureControlling
+    private var observers: [NSObjectProtocol] = []
+    private var operation: Task<Void, Never>?
+    private var revision: UInt = 0
+    private var wantsRunning = false
+
+    private override convenience init() {
+        self.init(capture: CameraCaptureSession())
     }
 
-    private let sessionQueue = DispatchQueue(label: "BoringNotch.WebcamManager.SessionQueue", qos: .userInitiated)
-    
-    private var isCleaningUp: Bool = false
-    
-    // MARK: - Constants
-    
-    enum WebcamError: Error, LocalizedError {
-        case deviceUnavailable
-        case accessDenied
-        case configurationFailed(String)
-        
-        var errorDescription: String? {
-            switch self {
-            case .deviceUnavailable:
-                return "No camera devices available"
-            case .accessDenied:
-                return "Camera access denied"
-            case .configurationFailed(let message):
-                return "Camera configuration failed: \(message)"
-            }
-        }
-    }
-    
-    // MARK: - Properties
-    
-    private override init() {
+    init(capture: any CameraCaptureControlling) {
+        self.capture = capture
         super.init()
-        NotificationCenter.default.addObserver(self, selector: #selector(deviceWasDisconnected), name: .AVCaptureDeviceWasDisconnected, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(deviceWasConnected), name: .AVCaptureDeviceWasConnected, object: nil)
+        for name in [Notification.Name.AVCaptureDeviceWasConnected, .AVCaptureDeviceWasDisconnected] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                let disconnected = notification.name == .AVCaptureDeviceWasDisconnected
+                MainActor.assumeIsolated {
+                    if disconnected {
+                        self?.stopSession()
+                    }
+                    self?.checkCameraAvailability()
+                }
+            })
+        }
         checkCameraAvailability()
     }
-    
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-        
-        if let session = captureSession {
-            if session.isRunning {
-                session.stopRunning()
-            }
+
+    isolated deinit {
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+        let capture = capture
+        let previous = operation
+        Task {
+            await previous?.value
+            await capture.stop()
         }
-        captureSession = nil
-            
-        previewLayer = nil
     }
 
-    // MARK: - Camera Management
-    
-    /// Checks current authorization status and requests access if needed
     func checkAndRequestVideoAuthorization() {
-        let status = AVCaptureDevice.authorizationStatus(for: .video)
-        DispatchQueue.main.async {
-            self.authorizationStatus = status
-        }
-        
-        switch status {
+        authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        switch authorizationStatus {
         case .authorized:
-            checkCameraAvailability() // Check availability if authorized
+            checkCameraAvailability()
         case .notDetermined:
-            requestVideoAccess()
-        case .denied, .restricted:
-            NSLog("Camera access denied or restricted")
-        @unknown default:
-            NSLog("Unknown authorization status")
-        }
-    }
-    
-    /// Requests access to the camera
-    private func requestVideoAccess() {
-        AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-            DispatchQueue.main.async {
+            Task { [weak self] in
+                let granted = await AVCaptureDevice.requestAccess(for: .video)
                 self?.authorizationStatus = granted ? .authorized : .denied
-                if granted {
-                    self?.checkCameraAvailability() // Check availability if access granted
-                }
+                self?.checkCameraAvailability()
             }
+        default:
+            break
         }
     }
-    
-    /// Checks if any camera devices are available and sets up capture session if needed
+
     func checkCameraAvailability() {
-        let availableDevices = AVCaptureDevice.DiscoverySession(
+        cameraAvailable = !AVCaptureDevice.DiscoverySession(
             deviceTypes: [.external, .builtInWideAngleCamera],
             mediaType: .video,
             position: .unspecified
-        ).devices
-        
-        let hasAvailableDevices = !availableDevices.isEmpty
-        
-        DispatchQueue.main.async {
-            self.cameraAvailable = hasAvailableDevices
-        }
-    }
-    
-    /// Sets up the capture session with a completion handler
-    private func setupCaptureSession(completion: @escaping (Bool) -> Void) {
-        sessionQueue.async { [weak self] in
-            guard let self = self else { 
-                completion(false)
-                return 
-            }
-            
-            // Clean up any existing session before creating a new one
-            self.cleanupExistingSession()
-            
-            let session = AVCaptureSession()
-            
-            do {
-                // Get available devices and prefer external camera if available
-                let discoverySession = AVCaptureDevice.DiscoverySession(
-                    deviceTypes: [.external, .builtInWideAngleCamera],
-                    mediaType: .video,
-                    position: .unspecified
-                )
-                
-                guard let videoDevice = discoverySession.devices.first else {
-                    NSLog("No video devices available")
-                    DispatchQueue.main.async {
-                        self.isSessionRunning = false
-                        self.cameraAvailable = false
-                    }
-                    completion(false)
-                    return
-                }
-                
-                NSLog("Using camera: \(videoDevice.localizedName)")
-                
-                // Lock device for configuration
-                try videoDevice.lockForConfiguration()
-                defer { videoDevice.unlockForConfiguration() }
-                
-                let videoInput = try AVCaptureDeviceInput(device: videoDevice)
-                guard session.canAddInput(videoInput) else {
-                    throw NSError(domain: "BoringNotch.WebcamManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Cannot add video input"])
-                }
-                
-                session.beginConfiguration()
-                session.sessionPreset = .high
-                session.addInput(videoInput)
-                
-                let videoOutput = AVCaptureVideoDataOutput()
-                videoOutput.setSampleBufferDelegate(nil, queue: nil)
-                if session.canAddOutput(videoOutput) {
-                    session.addOutput(videoOutput)
-                }
-                session.commitConfiguration()
-                
-                self.captureSession = session
-                
-                // Create and set up preview layer on main thread
-                DispatchQueue.main.async {
-                    self.cameraAvailable = true
-                    let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-                    previewLayer.videoGravity = .resizeAspectFill
-                    self.previewLayer = previewLayer
-                    
-                    // Setup is complete, let the caller know
-                    completion(true)
-                }
-                
-                NSLog("Capture session setup completed successfully")
-            } catch {
-                NSLog("Failed to setup capture session: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    self.isSessionRunning = false
-                    self.cameraAvailable = false
-                    self.previewLayer = nil
-                }
-                completion(false)
-            }
-        }
-    }
-    
-    /// Cleans up an existing capture session, removing all inputs and outputs
-    private func cleanupExistingSession() {
-        if let existingSession = self.captureSession {
-            // First stop the session if running
-            if existingSession.isRunning {
-                existingSession.stopRunning()
-            }
-            
-            // Then perform configuration cleanup
-            existingSession.beginConfiguration()
-            
-            // Remove all inputs and outputs
-            for input in existingSession.inputs {
-                existingSession.removeInput(input)
-            }
-            for output in existingSession.outputs {
-                existingSession.removeOutput(output)
-            }
-            
-            existingSession.commitConfiguration()
-            self.captureSession = nil
-            
-            // Clear preview layer on main thread
-            DispatchQueue.main.async {
-                self.previewLayer = nil
-            }
-        }
+        ).devices.isEmpty
     }
 
-    @objc private func deviceWasDisconnected(notification: Notification) {
-        NSLog("Camera device was disconnected")
-        sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            self.stopSession()
-            DispatchQueue.main.async {
-                self.cameraAvailable = false
-            }
-        }
-    }
-
-    @objc private func deviceWasConnected(notification: Notification) {
-        NSLog("Camera device was connected")
-        sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            self.checkCameraAvailability()
-        }
-    }
-
-    private func updateSessionState() {
-        let isRunning = self.captureSession?.isRunning ?? false
-        DispatchQueue.main.async {
-            self.isSessionRunning = isRunning
-        }
-    }
-    
     func startSession() {
-        sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            
-            // If no session exists, create new session
-            if self.captureSession == nil {
-                self.setupCaptureSession { success in
-                    if success {
-                        // Only start the session if setup was successful
-                        self.startRunningCaptureSession()
-                    }
-                }
-            } else {
-                // Session already exists, just start it
-                self.startRunningCaptureSession()
+        guard !wantsRunning else { return }
+        wantsRunning = true
+        revision &+= 1
+        let requestedRevision = revision
+        let previous = operation
+        let capture = capture
+        operation = Task { [weak self] in
+            await previous?.value
+            guard let self, revision == requestedRevision, wantsRunning else { return }
+            do {
+                try await capture.start()
+                // A close or disconnect may have arrived while the camera was starting.
+                guard revision == requestedRevision, wantsRunning else { return }
+                previewLayer = capture.makePreviewLayer()
+                isSessionRunning = true
+                cameraAvailable = true
+            } catch {
+                guard revision == requestedRevision else { return }
+                wantsRunning = false
+                isSessionRunning = false
+                previewLayer = nil
+                checkCameraAvailability()
+                NSLog("Failed to start camera: %@", error.localizedDescription)
             }
         }
     }
-    
-    private func startRunningCaptureSession() {
-        sessionQueue.async { [weak self] in
-            guard let self = self, let session = self.captureSession, !session.isRunning else {
-                return
-            }
-            
-            session.startRunning()
-            
-            // Update state on main thread
-            self.updateSessionState()
-            
-            NSLog("Capture session started successfully")
-        }
-    }
-    
+
     func stopSession() {
-        sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            
-            // Update state to indicate we're stopping
-            DispatchQueue.main.async {
-                self.isSessionRunning = false
+        wantsRunning = false
+        revision &+= 1
+        previewLayer = nil
+        isSessionRunning = false
+        let previous = operation
+        let capture = capture
+        operation = Task {
+            await previous?.value
+            await capture.stop()
+        }
+    }
+}
+
+/// AVFoundation bridge: configuration, start, and stop run exclusively on `queue`.
+/// The session reference is immutable. The only main-actor access attaches it to
+/// an AVCaptureVideoPreviewLayer; UI code never configures or starts the session.
+private final class CameraCaptureSession: CameraCaptureControlling, @unchecked Sendable {
+    private let session = AVCaptureSession()
+    private let queue = DispatchQueue(label: "BoringNotch.CameraCaptureSession", qos: .userInitiated)
+    private var configured = false // Accessed only on queue.
+
+    @MainActor func makePreviewLayer() -> AVCaptureVideoPreviewLayer {
+        let layer = AVCaptureVideoPreviewLayer(session: session)
+        layer.videoGravity = .resizeAspectFill
+        return layer
+    }
+
+    func start() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            queue.async { [self] in
+                do {
+                    try configureIfNeeded()
+                    if !session.isRunning { session.startRunning() }
+                    guard session.isRunning else { throw CaptureError.failedToStart }
+                    continuation.resume()
+                } catch {
+                    cleanup()
+                    continuation.resume(throwing: error)
+                }
             }
-            
-            self.cleanupExistingSession()
-            
-            NSLog("Capture session stopped and cleaned up")
+        }
+    }
+
+    func stop() async {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                cleanup()
+                continuation.resume()
+            }
+        }
+    }
+
+    private func configureIfNeeded() throws {
+        dispatchPrecondition(condition: .onQueue(queue))
+        guard !configured else { return }
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+            throw CaptureError.accessDenied
+        }
+        let discovery = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.external, .builtInWideAngleCamera], mediaType: .video, position: .unspecified
+        )
+        guard let device = discovery.devices.first else { throw CaptureError.deviceUnavailable }
+        let input = try AVCaptureDeviceInput(device: device)
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
+        session.sessionPreset = .high
+        guard session.canAddInput(input) else { throw CaptureError.configurationFailed }
+        session.addInput(input)
+        let output = AVCaptureVideoDataOutput()
+        if session.canAddOutput(output) { session.addOutput(output) }
+        configured = true
+    }
+
+    private func cleanup() {
+        dispatchPrecondition(condition: .onQueue(queue))
+        if session.isRunning { session.stopRunning() }
+        session.beginConfiguration()
+        session.inputs.forEach { session.removeInput($0) }
+        session.outputs.forEach { session.removeOutput($0) }
+        session.commitConfiguration()
+        configured = false
+    }
+
+    private enum CaptureError: LocalizedError {
+        case accessDenied, deviceUnavailable, configurationFailed, failedToStart
+        var errorDescription: String? {
+            switch self {
+            case .accessDenied: return "Camera access denied"
+            case .deviceUnavailable: return "No camera devices available"
+            case .configurationFailed: return "Cannot add camera input"
+            case .failedToStart: return "The camera session could not start"
+            }
         }
     }
 }

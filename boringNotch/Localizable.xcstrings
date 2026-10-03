@@ -201,6 +201,9 @@
         }
       }
     },
+    "—" : {
+
+    },
     "'Now Playing' was the only option on previous versions and works with all media apps." : {
       "localizations" : {
         "ar" : {
@@ -602,6 +605,7 @@
       }
     },
     "%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -700,6 +704,12 @@
           }
         }
       }
+    },
+    "%@%%" : {
+
+    },
+    "%@C" : {
+
     },
     "%d%%" : {
       "localizations" : {
@@ -1300,6 +1310,12 @@
           }
         }
       }
+    },
+    "7 days" : {
+
+    },
+    "24 hours" : {
+
     },
     "About" : {
       "localizations" : {
@@ -2402,6 +2418,9 @@
         }
       }
     },
+    "Allow location access in System Settings to see local weather." : {
+
+    },
     "Always show full event titles" : {
       "localizations" : {
         "ar" : {
@@ -3201,6 +3220,9 @@
           }
         }
       }
+    },
+    "Back to month" : {
+
     },
     "Battery" : {
       "localizations" : {
@@ -4302,6 +4324,9 @@
         }
       }
     },
+    "Chance of precipitation" : {
+
+    },
     "Change media with horizontal gestures" : {
       "localizations" : {
         "ar" : {
@@ -5201,6 +5226,9 @@
           }
         }
       }
+    },
+    "Clear" : {
+
     },
     "Clear slot" : {
       "localizations" : {
@@ -6201,6 +6229,12 @@
           }
         }
       }
+    },
+    "Could not update weather. Check your internet connection." : {
+
+    },
+    "Current location" : {
+
     },
     "Currently selected: %@" : {
       "localizations" : {
@@ -7806,6 +7840,9 @@
         }
       }
     },
+    "Drizzle" : {
+
+    },
     "Drop files here" : {
       "localizations" : {
         "ar" : {
@@ -9408,6 +9445,9 @@
         }
       }
     },
+    "Feels like %@" : {
+
+    },
     "Files dropped on the shelf will be shared via this service" : {
       "localizations" : {
         "ar" : {
@@ -9508,6 +9548,12 @@
         }
       }
     },
+    "Finding your location and weather…" : {
+
+    },
+    "Finding your location took too long. Please try again." : {
+
+    },
     "Finish" : {
       "localizations" : {
         "ar" : {
@@ -9607,6 +9653,12 @@
           }
         }
       }
+    },
+    "Fog" : {
+
+    },
+    "Freezing rain" : {
+
     },
     "Full screen behavior" : {
       "localizations" : {
@@ -10407,6 +10459,22 @@
           }
         }
       }
+    },
+    "H: %@  L: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "H: %1$@  L: %2$@"
+          }
+        }
+      }
+    },
+    "Has events" : {
+
+    },
+    "Heavy rain" : {
+
     },
     "Hide all-day events" : {
       "localizations" : {
@@ -12008,6 +12076,12 @@
           }
         }
       }
+    },
+    "Local weather" : {
+
+    },
+    "Location Settings" : {
+
     },
     "Lottie JSON URL" : {
       "localizations" : {
@@ -14009,6 +14083,9 @@
         }
       }
     },
+    "Mostly clear" : {
+
+    },
     "Music Source" : {
       "localizations" : {
         "ar" : {
@@ -14508,6 +14585,9 @@
           }
         }
       }
+    },
+    "Next month" : {
+
     },
     "No custom animation available" : {
       "localizations" : {
@@ -16110,6 +16190,12 @@
         }
       }
     },
+    "Overcast" : {
+
+    },
+    "Partly cloudy" : {
+
+    },
     "Pick a Color" : {
       "localizations" : {
         "ar" : {
@@ -16409,6 +16495,9 @@
           }
         }
       }
+    },
+    "Previous month" : {
+
     },
     "Progress bar style" : {
       "localizations" : {
@@ -16909,6 +16998,15 @@
           }
         }
       }
+    },
+    "Rain" : {
+
+    },
+    "Rain showers" : {
+
+    },
+    "Refresh weather" : {
+
     },
     "Release name" : {
       "localizations" : {
@@ -19112,6 +19210,9 @@
         }
       }
     },
+    "Show current month" : {
+
+    },
     "Show HUD in open notch" : {
       "localizations" : {
         "ar" : {
@@ -20512,6 +20613,12 @@
         }
       }
     },
+    "Snow" : {
+
+    },
+    "Snow showers" : {
+
+    },
     "Software updates" : {
       "localizations" : {
         "ar" : {
@@ -21214,6 +21321,15 @@
         }
       }
     },
+    "The weather service is unavailable. Please try again later." : {
+
+    },
+    "Thunderstorm" : {
+
+    },
+    "Thunderstorm with hail" : {
+
+    },
     "Time to Full Charge: %lld min" : {
       "localizations" : {
         "ar" : {
@@ -21414,6 +21530,9 @@
         }
       }
     },
+    "Today" : {
+
+    },
     "Toggle Notch Open:" : {
       "localizations" : {
         "ar" : {
@@ -21613,6 +21732,9 @@
           }
         }
       }
+    },
+    "Try again" : {
+
     },
     "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when **Open notch on hover** option is disabled" : {
       "localizations" : {
@@ -22115,6 +22237,19 @@
         }
       }
     },
+    "Updated %@" : {
+
+    },
+    "Updated %@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Updated %1$@ · %2$@"
+          }
+        }
+      }
+    },
     "Upgrade to Pro" : {
       "localizations" : {
         "ar" : {
@@ -22215,6 +22350,9 @@
         }
       }
     },
+    "Use current location" : {
+
+    },
     "Use music visualizer spectrogram" : {
       "localizations" : {
         "ar" : {
@@ -22314,6 +22452,9 @@
           }
         }
       }
+    },
+    "Use your location to see current conditions and forecasts." : {
+
     },
     "Use your macOS system accent color" : {
       "localizations" : {
@@ -22814,6 +22955,24 @@
           }
         }
       }
+    },
+    "Weather data by Open-Meteo, licensed under CC BY 4.0" : {
+
+    },
+    "Weather data is incomplete. Please try again later." : {
+
+    },
+    "Weather data: Open-Meteo" : {
+
+    },
+    "Weather is currently unavailable. Updates will retry automatically." : {
+
+    },
+    "Weather unavailable" : {
+
+    },
+    "Weather updates automatically every 3 minutes." : {
+
     },
     "Welcome" : {
       "localizations" : {
@@ -23414,6 +23573,9 @@
           }
         }
       }
+    },
+    "Your location is unavailable. Check Location Services and try again." : {
+
     },
     "Your macOS system accent color" : {
       "localizations" : {

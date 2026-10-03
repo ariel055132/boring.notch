@@ -68,7 +68,8 @@ final class SharingStateManager: ObservableObject {
 	}
 }
 
-final class SharingLifecycleDelegate: NSObject, NSSharingServiceDelegate, NSSharingServicePickerDelegate {
+@MainActor
+final class SharingLifecycleDelegate: NSObject, NSSharingServiceDelegate, @MainActor NSSharingServicePickerDelegate {
 	let id: UUID
 	private let onEnd: () -> Void
 	private let onBegin: () -> Void

@@ -10,6 +10,7 @@ import AppKit
 import Foundation
 import UniformTypeIdentifiers
 
+@MainActor
 extension NSItemProvider {
     
     func extractItem() async -> URL? {
@@ -29,19 +30,18 @@ extension NSItemProvider {
     func loadData() async -> Data? {
         NSLog(String(describing: self.registeredTypeIdentifiers))
         guard hasItemConformingToTypeIdentifier(UTType.data.identifier) else { return nil }
-        return await withCheckedContinuation { (cont: CheckedContinuation<Data?, Never>) in
+        let result = await withCheckedContinuation { (cont: CheckedContinuation<(Data?, String?), Never>) in
             loadItem(forTypeIdentifier: UTType.data.identifier, options: nil) { item, error in
                 if let error = error {
                     print("Error loading data for type \(UTType.data.identifier): \(error.localizedDescription)")
-                    cont.resume(returning: nil)
+                    cont.resume(returning: (nil, nil))
                     return
                 }
                 if let url = item as? URL, let data = try? Data(contentsOf: url) {
                     if !url.absoluteString.contains("com.apple.SwiftUI.filePromises") {
-                        cont.resume(returning: nil)
+                        cont.resume(returning: (nil, nil))
                         return
                     }
-                    self.suggestedName = self.suggestedName ?? url.lastPathComponent
                     
                     let fileManager = FileManager.default
                     let folderURL = url.deletingLastPathComponent()
@@ -64,14 +64,18 @@ extension NSItemProvider {
                         print("Error: \(error.localizedDescription)")
                     }
                     
-                    cont.resume(returning: data)
+                    cont.resume(returning: (data, url.lastPathComponent))
                 } else if let data = item as? Data {
-                    cont.resume(returning: data)
+                    cont.resume(returning: (data, nil))
                 } else {
-                    cont.resume(returning: nil)
+                    cont.resume(returning: (nil, nil))
                 }
             }
         }
+        if suggestedName == nil, let filename = result.1 {
+            suggestedName = filename
+        }
+        return result.0
     }
 
     /// Attempts to extract a URL (web link) from the provider

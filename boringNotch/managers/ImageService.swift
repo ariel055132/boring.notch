@@ -8,7 +8,7 @@
 import Foundation
 import Defaults
 
-public protocol ImageServiceProtocol {
+public protocol ImageServiceProtocol: Sendable {
     func fetchImageData(from url: URL) async throws -> Data
 }
 

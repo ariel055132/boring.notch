@@ -29,7 +29,7 @@ struct BouncingButtonStyle: ButtonStyle {
 }
 
 extension Button {
-    func bouncingStyle(vm: BoringViewModel) -> some View {
+    @MainActor func bouncingStyle(vm: BoringViewModel) -> some View {
         self.buttonStyle(BouncingButtonStyle(vm: vm))
     }
 }

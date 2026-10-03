@@ -9,11 +9,12 @@ import Combine
 import Defaults
 import SwiftUI
 
-let defaultImage: NSImage = .init(
+@MainActor let defaultImage: NSImage = .init(
     systemSymbolName: "heart.fill",
     accessibilityDescription: "Album Art"
 )!
 
+@MainActor
 class MusicManager: ObservableObject {
     // MARK: - Properties
     static let shared = MusicManager()
@@ -72,6 +73,7 @@ class MusicManager: ObservableObject {
     init() {
         // Listen for changes to the default controller preference
         NotificationCenter.default.publisher(for: Notification.Name.mediaControllerChanged)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.setActiveControllerBasedOnPreference()
             }
@@ -92,7 +94,7 @@ class MusicManager: ObservableObject {
         }
     }
 
-    deinit {
+    isolated deinit {
         destroy()
     }
     

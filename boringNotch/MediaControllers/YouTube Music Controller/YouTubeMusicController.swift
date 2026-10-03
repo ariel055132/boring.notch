@@ -97,7 +97,7 @@ final class YouTubeMusicController: MediaControllerProtocol {
     func toggleShuffle() async { await sendCommand(endpoint: "/shuffle", method: "POST") }
     func toggleRepeat() async { await sendCommand(endpoint: "/switch-repeat", method: "POST") }
 
-    nonisolated func isActive() -> Bool {
+    func isActive() -> Bool {
         NSWorkspace.shared.runningApplications.contains {
             $0.bundleIdentifier == configuration.bundleIdentifier
         }
@@ -151,7 +151,8 @@ final class YouTubeMusicController: MediaControllerProtocol {
                     )
                     
                     for await notification in launchNotifications {
-                        await self?.handleAppLaunched(notification)
+                        let bundleID = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
+                        await self?.handleAppLaunched(bundleIdentifier: bundleID)
                     }
                 }
                 
@@ -161,25 +162,24 @@ final class YouTubeMusicController: MediaControllerProtocol {
                     )
                     
                     for await notification in terminateNotifications {
-                        await self?.handleAppTerminated(notification)
+                        let bundleID = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
+                        await self?.handleAppTerminated(bundleIdentifier: bundleID)
                     }
                 }
             }
         }
     }
     
-    private func handleAppLaunched(_ notification: Notification) async {
-        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-              app.bundleIdentifier == configuration.bundleIdentifier else {
+    private func handleAppLaunched(bundleIdentifier: String?) async {
+        guard bundleIdentifier == configuration.bundleIdentifier else {
             return
         }
         
         await initializeIfAppActive()
     }
     
-    private func handleAppTerminated(_ notification: Notification) async {
-        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-              app.bundleIdentifier == configuration.bundleIdentifier else {
+    private func handleAppTerminated(bundleIdentifier: String?) async {
+        guard bundleIdentifier == configuration.bundleIdentifier else {
             return
         }
         

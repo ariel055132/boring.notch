@@ -12,6 +12,7 @@ private final class MenuActionBox: NSObject {
     init(target: AnyObject) { self.target = target }
 }
 
+@MainActor
 extension NSMenu {
     // Each NSMenu instance can store one retained target
     private static let retainedAction = AssociatedObject<MenuActionBox>()

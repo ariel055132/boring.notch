@@ -12,6 +12,7 @@ import AVFoundation
 
 private let kSystemDefinedEventType = CGEventType(rawValue: 14)!
 
+@MainActor
 final class MediaKeyInterceptor {
     static let shared = MediaKeyInterceptor()
     
@@ -71,9 +72,13 @@ final class MediaKeyInterceptor {
             options: .defaultTap,
             eventsOfInterest: mask,
             callback: { _, _, cgEvent, userInfo in
-                guard let userInfo else { return Unmanaged.passRetained(cgEvent) }
+                guard let userInfo else { return Unmanaged.passUnretained(cgEvent) }
                 let interceptor = Unmanaged<MediaKeyInterceptor>.fromOpaque(userInfo).takeUnretainedValue()
-                return interceptor.handleEvent(cgEvent)
+                // The event tap is installed on CFRunLoopGetMain() below.
+                let consumed = MainActor.assumeIsolated {
+                    interceptor.shouldConsumeEvent(cgEvent)
+                }
+                return consumed ? nil : Unmanaged.passUnretained(cgEvent)
             },
             userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         )
@@ -100,15 +105,15 @@ final class MediaKeyInterceptor {
     
     // MARK: - Event Handling
     
-    private func handleEvent(_ cgEvent: CGEvent) -> Unmanaged<CGEvent>? {
+    private func shouldConsumeEvent(_ cgEvent: CGEvent) -> Bool {
         // Ensure the CGEvent has a valid type before converting to NSEvent
         guard cgEvent.type != .null else {
-            return Unmanaged.passRetained(cgEvent)
+            return false
         }
         guard let nsEvent = NSEvent(cgEvent: cgEvent),
               nsEvent.type == .systemDefined,
               nsEvent.subtype.rawValue == 8 else {
-            return Unmanaged.passRetained(cgEvent)
+            return false
         }
         
         let data1 = nsEvent.data1
@@ -118,7 +123,7 @@ final class MediaKeyInterceptor {
         // 0xA = key down, 0xB = key up. Only handle key down.
         guard stateByte == 0xA,
               let keyType = NXKeyType(rawValue: keyCode) else {
-            return Unmanaged.passRetained(cgEvent)
+            return false
         }
         
         let flags = nsEvent.modifierFlags
@@ -129,13 +134,13 @@ final class MediaKeyInterceptor {
         // Handle option key action (without shift)
         if option && !shift {
             if handleOptionAction(for: keyType, command: command) {
-                return nil
+                return true
             }
         }
         
         // Handle normal key press
         handleKeyPress(keyType: keyType, option: option, shift: shift, command: command)
-        return nil
+        return true
     }
     
     private func handleOptionAction(for keyType: NXKeyType, command: Bool) -> Bool {

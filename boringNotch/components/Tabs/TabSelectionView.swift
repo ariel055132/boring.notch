@@ -6,8 +6,9 @@
 //
 
 import SwiftUI
+import Defaults
 
-struct TabModel: Identifiable {
+struct TabModel: Identifiable, Sendable {
     let id = UUID()
     let label: String
     let icon: String
@@ -16,15 +17,17 @@ struct TabModel: Identifiable {
 
 let tabs = [
     TabModel(label: "Home", icon: "house.fill", view: .home),
-    TabModel(label: "Shelf", icon: "tray.fill", view: .shelf)
+    TabModel(label: "Shelf", icon: "tray.fill", view: .shelf),
+    TabModel(label: "Weather", icon: "cloud.sun.fill", view: .weather)
 ]
 
 struct TabSelectionView: View {
     @ObservedObject var coordinator = BoringViewCoordinator.shared
+    @Default(.boringShelf) private var enableShelf
     @Namespace var animation
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(tabs) { tab in
+            ForEach(tabs.filter { enableShelf || $0.view != .shelf }) { tab in
                     TabButton(label: tab.label, icon: tab.icon, selected: coordinator.currentView == tab.view) {
                         withAnimation(.smooth) {
                             coordinator.currentView = tab.view
@@ -47,6 +50,11 @@ struct TabSelectionView: View {
             }
         }
         .clipShape(Capsule())
+        .onChange(of: enableShelf) { _, enabled in
+            if !enabled && coordinator.currentView == .shelf {
+                coordinator.currentView = .home
+            }
+        }
     }
 }
 

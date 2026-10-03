@@ -5,6 +5,7 @@
 
 import AppKit
 
+@MainActor
 final class BrightnessManager: ObservableObject {
 	static let shared = BrightnessManager()
 
@@ -67,6 +68,7 @@ final class BrightnessManager: ObservableObject {
 // (DisplayServices helpers moved into XPC helper)
 
 // MARK: - Keyboard Backlight Controller
+@MainActor
 final class KeyboardBacklightManager: ObservableObject {
 	static let shared = KeyboardBacklightManager()
 
@@ -127,4 +129,3 @@ final class KeyboardBacklightManager: ObservableObject {
 		}
 	}
 }
-

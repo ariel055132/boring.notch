@@ -16,7 +16,7 @@ import CoreImage.CIFilterBuiltins
 extension NSImage {
 
     
-    func averageColor(completion: @escaping (NSColor?) -> Void) {
+    func averageColor(completion: @escaping @MainActor @Sendable (NSColor?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             guard let cgImage = self.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
                 DispatchQueue.main.async {
@@ -71,7 +71,7 @@ extension NSImage {
             let minBrightness: CGFloat = 0.5
             let isNearBlack = averageRed < 0.03 && averageGreen < 0.03 && averageBlue < 0.03
             
-            var finalColor: NSColor
+            let finalColor: NSColor
             
             if isNearBlack {
                 // If it's near black, just return a gray color with the minimum brightness

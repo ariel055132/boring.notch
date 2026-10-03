@@ -25,12 +25,11 @@ jobs:
         platform:
           - macOS
         xcode:
-          - ^16
+          - ^26
         scheme:
           - boringNotch
-    # macos-latest now resolves to macos-26, which does not ship Xcode 16.
-    # Keep this legacy main-branch build on an image with the requested toolchain.
-    runs-on: macos-15
+    # Swift 6 actor-isolated conformances and deinits require Swift 6.2 / Xcode 26+.
+    runs-on: macos-26
     steps:
     - name: Code Checkout
       # TODO: pin to immutable SHA

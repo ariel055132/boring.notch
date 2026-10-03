@@ -61,7 +61,7 @@ struct GlowingSnake<
     Fill: ShapeStyle
 >: View, Animatable {
     
-    var progress: Double
+    nonisolated var progress: Double
     var delay: Double = 1.0
     var fill: Fill
     var lineWidth = 4.0
@@ -69,7 +69,7 @@ struct GlowingSnake<
     
     @ViewBuilder var shape: Content
     
-    var animatableData: Double {
+    nonisolated var animatableData: Double {
         get { progress }
         set { progress = newValue }
     }

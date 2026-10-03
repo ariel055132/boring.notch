@@ -122,7 +122,7 @@ final class ShelfItemViewModel: ObservableObject {
     }
 
     func shareItem(from view: NSView?) {
-        Task {
+        Task { [self] in
             var itemsToShare: [Any] = []
             var fileURLs: [URL] = []
             if case .text(let text) = item.kind {
@@ -222,7 +222,6 @@ final class ShelfItemViewModel: ObservableObject {
             if case .link(let url) = itm.kind { return url }
             return nil
         }
-        let selectedFolderURLs = selectedFileURLs.filter { isDirectory($0) }
         // URLs valid for Open/Open With (exclude folders)
         let selectedOpenableURLs = selectedItems.compactMap { itm -> URL? in
             if let u = itm.fileURL { return isDirectory(u) ? nil : u }
@@ -404,7 +403,7 @@ final class ShelfItemViewModel: ObservableObject {
         unowned let viewModel: ShelfItemViewModel
 
         // Keep associated objects (like accessory view handlers) without magic keys
-        private static var sliderHandlerAssoc = AssociatedObject<AnyObject>()
+        @MainActor private static let sliderHandlerAssoc = AssociatedObject<AnyObject>()
 
         init(item: ShelfItem, view: NSView, viewModel: ShelfItemViewModel) {
             self.item = item
@@ -488,7 +487,7 @@ final class ShelfItemViewModel: ObservableObject {
                     let urls = await selected.asyncCompactMap { item -> URL? in
                         if case .file = item.kind {
                             // Use immediate update for user-initiated menu action
-                            return await ShelfStateViewModel.shared.resolveAndUpdateBookmark(for: item)
+                            return ShelfStateViewModel.shared.resolveAndUpdateBookmark(for: item)
                         }
                         return nil
                     }
@@ -559,21 +558,18 @@ final class ShelfItemViewModel: ObservableObject {
                 guard !fileURLs.isEmpty else { break }
 
                 Task {
-                    do {
-                        // Create ZIP in a temporary location while holding access to selected resources
-                        if let zipTempURL = try await fileURLs.accessSecurityScopedResources(accessor: { urls in
-                            await TemporaryFileStorageService.shared.createZip(from: urls)
-                        }) {
-                            if let bookmark = try? Bookmark(url: zipTempURL) {
-                                let newItem = ShelfItem(kind: .file(bookmark: bookmark.data), isTemporary: true)
-                                ShelfStateViewModel.shared.add([newItem])
-                            } else {
-                                // Fallback: reveal the temporary file in Finder
-                                NSWorkspace.shared.activateFileViewerSelecting([zipTempURL])
-                            }
-                        }
-                    } catch {
-                        print("❌ Compress failed: \(error)")
+                    // Keep access to the selected resources until compression finishes.
+                    guard let zipTempURL = await fileURLs.accessSecurityScopedResources(accessor: { urls in
+                        await TemporaryFileStorageService.shared.createZip(from: urls)
+                    }) else {
+                        showErrorAlert(title: "Compression Failed", message: "The selected files could not be compressed.")
+                        return
+                    }
+                    if let bookmark = try? Bookmark(url: zipTempURL) {
+                        let newItem = ShelfItem(kind: .file(bookmark: bookmark.data), isTemporary: true)
+                        ShelfStateViewModel.shared.add([newItem])
+                    } else {
+                        NSWorkspace.shared.activateFileViewerSelecting([zipTempURL])
                     }
                 }
                 
@@ -690,7 +686,7 @@ final class ShelfItemViewModel: ObservableObject {
             panel.isAccessoryViewDisclosed = true
 
             // Wire up popup to switch filter mode
-            class PopupBinder: NSObject {
+            @MainActor class PopupBinder: NSObject {
                 weak var popup: NSPopUpButton?
                 weak var chooserDelegate: AppChooserDelegate?
                 weak var panel: NSOpenPanel?
@@ -812,7 +808,7 @@ final class ShelfItemViewModel: ObservableObject {
                     }
                 } catch {
                     print("❌ Failed to remove background: \(error.localizedDescription)")
-                    await showErrorAlert(title: "Background Removal Failed", message: error.localizedDescription)
+                    showErrorAlert(title: "Background Removal Failed", message: error.localizedDescription)
                 }
             }
         }
@@ -842,7 +838,7 @@ final class ShelfItemViewModel: ObservableObject {
                     }
                 } catch {
                     print("❌ Failed to create PDF: \(error.localizedDescription)")
-                    await showErrorAlert(title: "PDF Creation Failed", message: error.localizedDescription)
+                    showErrorAlert(title: "PDF Creation Failed", message: error.localizedDescription)
                 }
             }
         }
@@ -1099,8 +1095,8 @@ final class ShelfItemViewModel: ObservableObject {
     }
 }
 
-fileprivate extension Sequence {
-    func asyncCompactMap<T>(_ transform: (Element) async -> T?) async -> [T] {
+fileprivate extension Sequence where Element: Sendable {
+    func asyncCompactMap<T>(isolation: isolated (any Actor)? = #isolation, _ transform: (Element) async -> T?) async -> [T] {
         var result: [T] = []
         for element in self {
             if let transformed = await transform(element) {

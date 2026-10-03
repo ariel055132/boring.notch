@@ -346,9 +346,11 @@ struct ContentView: View {
                 VStack {
                     switch coordinator.currentView {
                     case .home:
-                        NotchHomeView(albumArtNamespace: albumArtNamespace)
+                        NotchHomeView()
                     case .shelf:
                         ShelfView()
+                    case .weather:
+                        WeatherView()
                     }
                 }
                 .transition(

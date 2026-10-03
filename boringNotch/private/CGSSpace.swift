@@ -12,6 +12,7 @@
 import AppKit
 
 /// Small Spaces API wrapper.
+@MainActor
 public final class CGSSpace {
     private let identifier: CGSSpaceID
 

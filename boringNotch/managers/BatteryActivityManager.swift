@@ -3,6 +3,7 @@ import IOKit.ps
 
 /// Manages and monitors battery status changes on the device
 /// - Note: This class uses the IOKit framework to monitor battery status
+@MainActor
 class BatteryActivityManager {
 
     static let shared = BatteryActivityManager()
@@ -61,8 +62,10 @@ class BatteryActivityManager {
     }
 
     /// Called when low power mode is enabled or disabled
-    @objc private func lowPowerModeChanged() {
-        notifyBatteryChanges()
+    @objc nonisolated private func lowPowerModeChanged() {
+        Task { @MainActor [weak self] in
+            self?.notifyBatteryChanges()
+        }
     }
     
     /// Starts monitoring battery changes
@@ -70,18 +73,18 @@ class BatteryActivityManager {
         guard let powerSource = IOPSNotificationCreateRunLoopSource({ context in
             guard let context = context else { return }
             let manager = Unmanaged<BatteryActivityManager>.fromOpaque(context).takeUnretainedValue()
-            manager.notifyBatteryChanges()
+            MainActor.assumeIsolated { manager.notifyBatteryChanges() }
         }, Unmanaged.passUnretained(self).toOpaque())?.takeRetainedValue() else {
             return
         }
         batterySource = powerSource
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), powerSource, .defaultMode)
+        CFRunLoopAddSource(CFRunLoopGetMain(), powerSource, .defaultMode)
     }
 
     /// Stops monitoring battery changes
     private func stopMonitoring() {
         if let powerSource = batterySource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), powerSource, .defaultMode)
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), powerSource, .defaultMode)
             batterySource = nil
         }
     }
@@ -304,7 +307,7 @@ class BatteryActivityManager {
         }
     }
     
-    deinit {
+    isolated deinit {
         stopMonitoring()
         NotificationCenter.default.removeObserver(self)
     }

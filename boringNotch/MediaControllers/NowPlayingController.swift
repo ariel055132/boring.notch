@@ -325,12 +325,12 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     
 }
 
-struct NowPlayingUpdate: Codable {
+struct NowPlayingUpdate: Codable, Sendable {
     let payload: NowPlayingPayload
     let diff: Bool?
 }
 
-struct NowPlayingPayload: Codable {
+struct NowPlayingPayload: Codable, Sendable {
     let title: String?
     let artist: String?
     let album: String?
@@ -361,7 +361,7 @@ actor JSONLinesPipeHandler {
         return pipe
     }
     
-    func readJSONLines<T: Decodable>(as type: T.Type, onLine: @escaping (T) async -> Void) async {
+    func readJSONLines<T: Decodable & Sendable>(as type: T.Type, onLine: @escaping @Sendable (T) async -> Void) async {
         do {
             try await self.processLines(as: type) { decodedObject in
                 await onLine(decodedObject)
@@ -371,7 +371,7 @@ actor JSONLinesPipeHandler {
         }
     }
     
-    private func processLines<T: Decodable>(as type: T.Type, onLine: @escaping (T) async -> Void) async throws {
+    private func processLines<T: Decodable & Sendable>(as type: T.Type, onLine: @escaping @Sendable (T) async -> Void) async throws {
         while true {
             let data = try await readData()
             guard !data.isEmpty else { break }
@@ -391,7 +391,7 @@ actor JSONLinesPipeHandler {
         }
     }
     
-    private func processJSONLine<T: Decodable>(_ line: String, as type: T.Type, onLine: @escaping (T) async -> Void) async {
+    private func processJSONLine<T: Decodable & Sendable>(_ line: String, as type: T.Type, onLine: @escaping @Sendable (T) async -> Void) async {
         guard let data = line.data(using: .utf8) else {
             return
         }

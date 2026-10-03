@@ -11,6 +11,7 @@ import Foundation
 @_exported import struct Foundation.URL
 
 
+@MainActor
 final class ShelfPersistenceService {
     static let shared = ShelfPersistenceService()
 

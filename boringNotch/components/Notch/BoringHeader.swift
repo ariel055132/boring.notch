@@ -13,13 +13,18 @@ struct BoringHeader: View {
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @StateObject var tvm = ShelfStateViewModel.shared
+    @Default(.boringShelf) private var enableShelf
     var body: some View {
         HStack(spacing: 0) {
             HStack {
-                if (!tvm.isEmpty || coordinator.alwaysShowTabs) && Defaults[.boringShelf] {
+                if coordinator.alwaysShowTabs || coordinator.currentView == .weather || (!tvm.isEmpty && enableShelf) {
                     TabSelectionView()
                 } else if vm.notchState == .open {
-                    EmptyView()
+                    // Keep weather reachable when the user hides the full tab bar.
+                    TabButton(label: "Weather", icon: "cloud.sun.fill", selected: false) {
+                        withAnimation(.smooth) { coordinator.currentView = .weather }
+                    }
+                    .frame(height: 26)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

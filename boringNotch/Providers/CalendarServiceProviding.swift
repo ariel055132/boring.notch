@@ -10,16 +10,15 @@
 import Foundation
 @preconcurrency import EventKit
 
-protocol CalendarServiceProviding {
+protocol CalendarServiceProviding: Sendable {
     func requestAccess(to type: EKEntityType) async throws -> Bool
     func calendars() async -> [CalendarModel]
     func events(from start: Date, to end: Date, calendars: [String]) async -> [EventModel]
 }
 
-class CalendarService: CalendarServiceProviding {
+actor CalendarService: CalendarServiceProviding {
     private let store = EKEventStore()
     
-    @MainActor
     func requestAccess(to type: EKEntityType) async throws -> Bool {
         if #available(macOS 14.0, *) {
             switch type {
@@ -67,15 +66,19 @@ class CalendarService: CalendarServiceProviding {
         // Fetch regular events
         if hasAccess(to: .event) {
             let eventCalendars = ekCalendars.filter { store.calendars(for: .event).contains($0) }
-            let predicate = store.predicateForEvents(withStart: start, end: end, calendars: eventCalendars)
-            let ekEvents = store.events(matching: predicate)
-            events.append(contentsOf: ekEvents.compactMap { EventModel(from: $0) })
+            if !eventCalendars.isEmpty {
+                let predicate = store.predicateForEvents(withStart: start, end: end, calendars: eventCalendars)
+                let ekEvents = store.events(matching: predicate)
+                events.append(contentsOf: ekEvents.compactMap { EventModel(from: $0) })
+            }
         }
         
         // Fetch reminders
         if hasAccess(to: .reminder) {
             let reminderCalendars = ekCalendars.filter { store.calendars(for: .reminder).contains($0) }
-            events.append(contentsOf: await fetchReminders(from: start, to: end, calendars: reminderCalendars))
+            if !reminderCalendars.isEmpty {
+                events.append(contentsOf: await fetchReminders(from: start, to: end, calendars: reminderCalendars))
+            }
         }
         
         return events.sorted { $0.start < $1.start }
@@ -90,11 +93,12 @@ class CalendarService: CalendarServiceProviding {
                 
                 let filteredReminders = (reminders ?? []).filter { reminder in
                     // Check if reminder has a due date within our range
-                    guard let dueDate = reminder.dueDateComponents?.date else {
+                    guard let components = reminder.dueDateComponents,
+                          let dueDate = Calendar.current.date(from: components) else {
                         return false
                     }
                     
-                    return dueDate >= start && dueDate <= end
+                    return dueDate >= start && dueDate < end
                 }
                 
                 // Convert to EventModel

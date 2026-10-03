@@ -8,240 +8,238 @@
 import Defaults
 import SwiftUI
 
-struct Config: Equatable {
-    //    var count: Int = 10  // 3 days past + today + 7 days future
-    var past: Int = 7
-    var future: Int = 14
-    var steps: Int = 1  // Each step is one day
-    var spacing: CGFloat = 0
-    var showsText: Bool = true
-    var offset: Int = 2  // Number of dates to the left of the selected date
-}
-
-struct WheelPicker: View {
+struct CalendarView: View {
     @EnvironmentObject var vm: BoringViewModel
-    @Binding var selectedDate: Date
-    @State private var scrollPosition: Int?
-    @State private var haptics: Bool = false
-    @State private var byClick: Bool = false
-    let config: Config
+    @ObservedObject private var calendarManager = CalendarManager.shared
+    @Default(.hideCompletedReminders) private var hideCompletedReminders
+    @Default(.hideAllDayEvents) private var hideAllDayEvents
+    @State private var displayedMonth = Date()
+    @State private var selectedDate: Date?
+    @State private var monthEvents: [EventModel] = []
+    @State private var loadedRequest: MonthRequest?
+    @State private var refreshID = 0
+    @State private var haptics = false
+
+    private struct MonthRequest: Equatable {
+        let month: Date
+        let revision: Int
+        let refreshID: Int
+    }
+
+    private var month: CalendarMonth { CalendarMonth(containing: displayedMonth) }
+
+    private var request: MonthRequest {
+        MonthRequest(
+            month: month.interval.start,
+            revision: calendarManager.eventsRevision,
+            refreshID: refreshID
+        )
+    }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: config.spacing) {
-                let spacerNum = config.offset
-                let dateCount = totalDateItems()
-                let totalItems = dateCount + 2 * spacerNum
-                ForEach(0..<totalItems, id: \.self) { index in
-                    if index < spacerNum || index >= spacerNum + dateCount {
-                        // Leading/trailing spacers sized to match a date cell
-                        Spacer()
-                            .frame(width: 24, height: 24)
-                            .id(index)
-                    } else {
-                        let date = dateForItemIndex(index: index, spacerNum: spacerNum)
-                        let isSelected = Calendar.current.isDate(date, inSameDayAs: selectedDate)
-                        dateButton(date: date, isSelected: isSelected, id: index) {
-                            selectedDate = date
-                            byClick = true
-                            withAnimation {
-                                scrollPosition = index
-                            }
-                            if Defaults[.enableHaptics] {
-                                haptics.toggle()
-                            }
+        let isLoading = loadedRequest != request
+        let eventsByDay = month.eventsByDay(
+            from: isLoading ? [] : monthEvents,
+            hideCompletedReminders: hideCompletedReminders,
+            hideAllDayEvents: hideAllDayEvents
+        )
+
+        VStack(spacing: 0) {
+            if let selectedDate {
+                dayView(
+                    date: selectedDate,
+                    events: eventsByDay[selectedDate] ?? [],
+                    isLoading: isLoading
+                )
+            } else {
+                MonthCalendarView(
+                    month: month,
+                    eventDays: Set(eventsByDay.keys),
+                    onSelectDate: { date in
+                        self.selectedDate = date
+                        if Defaults[.enableHaptics] {
+                            haptics.toggle()
+                        }
+                    },
+                    onChangeMonth: changeMonth,
+                    onShowCurrentMonth: showCurrentMonth
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .sensoryFeedback(.alignment, trigger: haptics)
+        .task(id: request) {
+            let currentRequest = request
+            let events = await calendarManager.events(in: month.interval)
+            // A rapid month change or an EventKit refresh can cancel an older query.
+            guard !Task.isCancelled else { return }
+            monthEvents = events
+            loadedRequest = currentRequest
+        }
+        .onChange(of: vm.notchState) { _, state in
+            if state == .open {
+                showCurrentMonth()
+            }
+        }
+    }
+
+    private func dayView(date: Date, events: [EventModel], isLoading: Bool) -> some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                Button {
+                    selectedDate = nil
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Back to month")
+                .accessibilityLabel("Back to month")
+
+                Text(date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 0)
+            }
+            .frame(height: 18)
+
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if events.isEmpty {
+                EmptyEventsView(selectedDate: date)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                EventListView(events: events)
+            }
+        }
+    }
+
+    private func changeMonth(by offset: Int) {
+        if let date = month.calendar.date(byAdding: .month, value: offset, to: month.interval.start) {
+            displayedMonth = date
+            selectedDate = nil
+        }
+    }
+
+    private func showCurrentMonth() {
+        displayedMonth = Date()
+        selectedDate = nil
+        refreshID += 1
+    }
+}
+
+struct MonthCalendarView: View {
+    let month: CalendarMonth
+    let eventDays: Set<Date>
+    let onSelectDate: (Date) -> Void
+    let onChangeMonth: (Int) -> Void
+    let onShowCurrentMonth: () -> Void
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
+
+    var body: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 2) {
+                HStack(spacing: 3) {
+                    Text(month.interval.start.formatted(.dateTime.month(.abbreviated).year()))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Spacer(minLength: 0)
+                    monthButton(symbol: "chevron.left", label: "Previous month") {
+                        onChangeMonth(-1)
+                    }
+                    Button("Today", action: onShowCurrentMonth)
+                        .font(.system(size: 10, weight: .medium))
+                        .buttonStyle(.plain)
+                        .help("Show current month")
+                    monthButton(symbol: "chevron.right", label: "Next month") {
+                        onChangeMonth(1)
+                    }
+                }
+                .frame(height: 20)
+
+                HStack(spacing: 0) {
+                    ForEach(0..<7, id: \.self) { index in
+                        Text(month.weekdaySymbols[index])
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(Color(white: 0.55))
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .frame(height: 12)
+                .accessibilityHidden(true)
+
+                // Share the available panel height across four, five, or six weeks.
+                let rowHeight = max(0, geometry.size.height - 36) / CGFloat(month.weekCount)
+                LazyVGrid(columns: columns, spacing: 0) {
+                    ForEach(month.days.indices, id: \.self) { index in
+                        if let date = month.days[index] {
+                            dayButton(date: date, height: rowHeight)
+                        } else {
+                            Color.clear
+                                .frame(height: rowHeight)
+                                .accessibilityHidden(true)
                         }
                     }
                 }
             }
-            .frame(height: 50)
-            .scrollTargetLayout()
-        }
-        .scrollIndicators(.never)
-        .scrollPosition(id: $scrollPosition, anchor: .center)
-        .scrollTargetBehavior(.viewAligned)  // Ensures scroll view snaps the centered view
-        .safeAreaPadding(.horizontal)
-        .sensoryFeedback(.alignment, trigger: haptics)
-        .onChange(of: scrollPosition) { oldValue, newValue in
-            if !byClick {
-                handleScrollChange(newValue: newValue, config: config)
-            } else {
-                byClick = false
-            }
-        }
-        .onAppear {
-            scrollToToday(config: config)
-        }
-        // When parent updates the bound selectedDate (e.g., view reopen), center the wheel on it
-        .onChange(of: selectedDate) { _, newValue in
-            let targetIndex = indexForDate(newValue)
-            if scrollPosition != targetIndex {
-                byClick = true
-                withAnimation {
-                    scrollPosition = targetIndex
-                }
-            }
         }
     }
 
-    private func dateButton(
-        date: Date, isSelected: Bool, id: Int, onClick: @escaping () -> Void
+    private func monthButton(
+        symbol: String, label: LocalizedStringKey, action: @escaping () -> Void
     ) -> some View {
-        let isToday = Calendar.current.isDateInToday(date)
-        return Button(action: onClick) {
-            VStack(spacing: 8) {
-                dayText(date: dateToString(for: date), isToday: isToday, isSelected: isSelected)
-                dateCircle(date: date, isToday: isToday, isSelected: isSelected)
-            }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 4)
-            .background(isSelected ? Color.effectiveAccentBackground : Color.clear)
-            .cornerRadius(8)
-        }
-        .buttonStyle(PlainButtonStyle())
-        .id(id)
-    }
-
-    private func dayText(date: String, isToday: Bool, isSelected: Bool) -> some View {
-        Text(date)
-            .font(.caption)
-            .foregroundColor(isSelected ? .white : Color(white: 0.65))
-    }
-
-    private func dateCircle(date: Date, isToday: Bool, isSelected: Bool) -> some View {
-        ZStack {
-            Circle()
-                .fill(isToday ? Color.effectiveAccent : .clear)
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
                 .frame(width: 20, height: 20)
-                .overlay(
-                    Circle()
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 0)
-                )
-            Text("\(date.date)")
-                .font(.body)
-                .fontWeight(.medium)
-                .foregroundColor(isSelected ? .white : Color(white: isToday ? 0.9 : 0.65))
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help(Text(label))
+        .accessibilityLabel(Text(label))
     }
 
-    func handleScrollChange(newValue: Int?, config: Config) {
-        guard let newIndex = newValue else { return }
-        let spacerNum = config.offset
-        let dateCount = totalDateItems()
-        guard (spacerNum..<(spacerNum + dateCount)).contains(newIndex) else { return }
-        let date = dateForItemIndex(index: newIndex, spacerNum: spacerNum)
-        if !Calendar.current.isDate(date, inSameDayAs: selectedDate) {
-            selectedDate = date
-            if Defaults[.enableHaptics] {
-                haptics.toggle()
+    private func dayButton(date: Date, height: CGFloat) -> some View {
+        let isToday = month.calendar.isDateInToday(date)
+        let hasEvents = eventDays.contains(date)
+        let fontSize = min(12, max(9, height * 0.55))
+
+        return Button {
+            onSelectDate(date)
+        } label: {
+            VStack(spacing: 0) {
+                Text("\(month.calendar.component(.day, from: date))")
+                    .font(.system(size: fontSize, weight: isToday ? .bold : .medium))
+                    .foregroundStyle(isToday ? .white : Color(white: 0.8))
+                    .frame(height: fontSize * 1.2)
+                Circle()
+                    .fill(hasEvents ? Color.effectiveAccent : .clear)
+                    .frame(width: 3, height: 3)
             }
-        }
-    }
-
-    private func scrollToToday(config: Config) {
-        let today = Date()
-        byClick = true
-        scrollPosition = indexForDate(today)
-        selectedDate = today
-    }
-
-    // MARK: - Index/Date mapping with steps and spacers
-    private func indexForDate(_ date: Date) -> Int {
-        let spacerNum = config.offset
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let startDate = cal.startOfDay(for: cal.date(byAdding: .day, value: -config.past, to: today) ?? today)
-        let target = cal.startOfDay(for: date)
-        let days = cal.dateComponents([.day], from: startDate, to: target).day ?? 0
-        let stepIndex = max(0, min(days / max(config.steps, 1), totalDateItems() - 1))
-        return spacerNum + stepIndex
-    }
-
-    private func dateForItemIndex(index: Int, spacerNum: Int) -> Date {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let startDate = cal.date(byAdding: .day, value: -config.past, to: today) ?? today
-        let stepIndex = index - spacerNum
-        return cal.date(byAdding: .day, value: stepIndex * max(config.steps, 1), to: startDate) ?? today
-    }
-
-    private func totalDateItems() -> Int {
-        let range = config.past + config.future
-        let step = max(config.steps, 1)
-        return Int(ceil(Double(range) / Double(step))) + 1
-    }
-
-    private func dateToString(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "E"
-        return formatter.string(from: date)
-    }
-}
-
-struct CalendarView: View {
-    @EnvironmentObject var vm: BoringViewModel
-    @ObservedObject private var calendarManager = CalendarManager.shared
-    @State private var selectedDate = Date()
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading) {
-                    Text(selectedDate.formatted(.dateTime.month(.abbreviated)))
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                    Text(selectedDate.formatted(.dateTime.year()))
-                        .font(.title3)
-                        .fontWeight(.light)
-                        .foregroundColor(Color(white: 0.65))
-                }
-
-                ZStack(alignment: .top) {
-                    WheelPicker(selectedDate: $selectedDate, config: Config())
-                    HStack(alignment: .top) {
-                        LinearGradient(
-                            colors: [Color.black, .clear], startPoint: .leading, endPoint: .trailing
-                        )
-                        .frame(width: 20)
-                        Spacer()
-                        LinearGradient(
-                            colors: [.clear, Color.black], startPoint: .leading, endPoint: .trailing
-                        )
-                        .frame(width: 20)
-                    }
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .background {
+                if isToday {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.effectiveAccentBackground)
+                        .frame(width: 22)
                 }
             }
-
-            let filteredEvents = EventListView.filteredEvents(
-                events: calendarManager.events
-            )
-            if filteredEvents.isEmpty {
-                EmptyEventsView(selectedDate: selectedDate)
-                Spacer(minLength: 0)
-            } else {
-                EventListView(events: calendarManager.events)
-            }
+            .contentShape(Rectangle())
         }
-        .listRowBackground(Color.clear)
-        .frame(height: 120)
-        .onChange(of: selectedDate) {
-            Task {
-                await calendarManager.updateCurrentDate(selectedDate)
-            }
-        }
-        .onChange(of: vm.notchState) { _, _ in
-            Task {
-                await calendarManager.updateCurrentDate(Date.now)
-                selectedDate = Date.now
-            }
-        }
-        .onAppear {
-            Task {
-                await calendarManager.updateCurrentDate(Date.now)
-                selectedDate = Date.now
-            }
-        }
+        .buttonStyle(.plain)
+        .help(date.formatted(date: .complete, time: .omitted))
+        .accessibilityLabel(date.formatted(date: .complete, time: .omitted))
+        .accessibilityValue(hasEvents ? Text("Has events") : Text("No events"))
     }
 }
 
@@ -271,34 +269,16 @@ struct EventListView: View {
     @Default(.showFullEventTitles) private var showFullEventTitles
 
 
-    static func filteredEvents(events: [EventModel]) -> [EventModel] {
-        events.filter { event in
-            if event.type.isReminder {
-                if case .reminder(let completed) = event.type {
-                    return !completed || !Defaults[.hideCompletedReminders]
-                }
-            }
-            // Filter out all-day events if setting is enabled
-            if event.isAllDay && Defaults[.hideAllDayEvents] {
-                return false
-            }
-            return true
-        }
-    }
-
-    private var filteredEvents: [EventModel] {
-        Self.filteredEvents(events: events)
-    }
-
     private func scrollToRelevantEvent(proxy: ScrollViewProxy) {
+        guard autoScrollToNextEvent else { return }
         let now = Date()
         // Determine a single target using preferred search order:
         // 1) first non-all-day upcoming/in-progress event
         // 2) first all-day event
         // 3) last event (fallback)
-        let nonAllDayUpcoming = filteredEvents.first(where: { !$0.isAllDay && $0.end > now })
-        let firstAllDay = filteredEvents.first(where: { $0.isAllDay })
-        let lastEvent = filteredEvents.last
+        let nonAllDayUpcoming = events.first(where: { !$0.isAllDay && $0.end > now })
+        let firstAllDay = events.first(where: { $0.isAllDay })
+        let lastEvent = events.last
         guard let target = nonAllDayUpcoming ?? firstAllDay ?? lastEvent else { return }
 
         Task { @MainActor in
@@ -311,7 +291,7 @@ struct EventListView: View {
     var body: some View {
         ScrollViewReader { proxy in
             List {
-                ForEach(filteredEvents) { event in
+                ForEach(events) { event in
                     Button(action: {
                         if let url = event.calendarAppURL() {
                             openURL(url)
@@ -334,11 +314,10 @@ struct EventListView: View {
             .onAppear {
                 scrollToRelevantEvent(proxy: proxy)
             }
-            .onChange(of: filteredEvents) { _, _ in
+            .onChange(of: events) { _, _ in
                 scrollToRelevantEvent(proxy: proxy)
             }
         }
-        Spacer(minLength: 0)
     }
 
     private func eventRow(_ event: EventModel) -> some View {

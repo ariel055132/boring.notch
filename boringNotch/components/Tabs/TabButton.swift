@@ -20,6 +20,9 @@ struct TabButton: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(PlainButtonStyle())
+        .help(Text(LocalizedStringKey(label)))
+        .accessibilityLabel(Text(LocalizedStringKey(label)))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

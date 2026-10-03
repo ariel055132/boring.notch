@@ -16,7 +16,9 @@ final class MediaChecker: Sendable {
     }
 
     func checkDeprecationStatus() async throws -> Bool {
-        try await Task.detached(priority: .userInitiated) {
+        // The bundled adapter requires macOS 15; older systems use a direct controller.
+        guard #available(macOS 15.0, *) else { return true }
+        return try await Task.detached(priority: .userInitiated) {
             guard let scriptURL = Bundle.main.url(forResource: "mediaremote-adapter", withExtension: "pl"),
                   let nowPlayingTestClientPath = Bundle.main.url(forResource: "MediaRemoteAdapterTestClient", withExtension: nil)?.path,
                   let frameworkPath = Bundle.main.privateFrameworksPath?.appending("/MediaRemoteAdapter.framework")

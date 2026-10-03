@@ -47,12 +47,14 @@ struct MinimalFaceFeatures: View {
     
     func startBlinking() {
         Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-            withAnimation(.spring(duration: 0.2)) {
-                isBlinking = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            MainActor.assumeIsolated {
                 withAnimation(.spring(duration: 0.2)) {
-                    isBlinking = false
+                    isBlinking = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.spring(duration: 0.2)) {
+                        isBlinking = false
+                    }
                 }
             }
         }

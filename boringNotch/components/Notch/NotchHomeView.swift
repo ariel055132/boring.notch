@@ -13,147 +13,79 @@ import SwiftUI
 // MARK: - Music Player Components
 
 struct MusicPlayerView: View {
-    @EnvironmentObject var vm: BoringViewModel
-    let albumArtNamespace: Namespace.ID
-
     var body: some View {
-        HStack {
-            AlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace).padding(.all, 5)
-            MusicControlsView().drawingGroup().compositingGroup()
-        }
-    }
-}
-
-struct AlbumArtView: View {
-    @ObservedObject var musicManager = MusicManager.shared
-    @ObservedObject var vm: BoringViewModel
-    let albumArtNamespace: Namespace.ID
-
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            if Defaults[.lightingEffect] {
-                albumArtBackground
-            }
-            albumArtButton
-        }
-    }
-
-    private var albumArtBackground: some View {
-        Image(nsImage: musicManager.albumArt)
-            .resizable()
-            .clipped()
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: Defaults[.cornerRadiusScaling]
-                        ? MusicPlayerImageSizes.cornerRadiusInset.opened
-                        : MusicPlayerImageSizes.cornerRadiusInset.closed)
-            )
-            .aspectRatio(1, contentMode: .fit)
-            .scaleEffect(x: 1.3, y: 1.4)
-            .rotationEffect(.degrees(92))
-            .blur(radius: 40)
-            .opacity(musicManager.isPlaying ? 0.5 : 0)
-    }
-
-    private var albumArtButton: some View {
-        ZStack {
-            Button {
-                musicManager.openMusicApp()
-            } label: {
-                ZStack(alignment:.bottomTrailing) {
-                    albumArtImage
-                    appIconOverlay
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
-            .scaleEffect(musicManager.isPlaying ? 1 : 0.85)
-            
-            albumArtDarkOverlay
-        }
-    }
-
-    private var albumArtDarkOverlay: some View {
-        Rectangle()
-            .aspectRatio(1, contentMode: .fit)
-            .foregroundColor(Color.black)
-            .opacity(musicManager.isPlaying ? 0 : 0.8)
-            .blur(radius: 50)
-    }
-                
-
-    private var albumArtImage: some View {
-        Image(nsImage: musicManager.albumArt)
-            .resizable()
-            .aspectRatio(1, contentMode: .fit)
-            .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
-            .clipped()
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: Defaults[.cornerRadiusScaling]
-                        ? MusicPlayerImageSizes.cornerRadiusInset.opened
-                        : MusicPlayerImageSizes.cornerRadiusInset.closed)
-            )
-    }
-
-    @ViewBuilder
-    private var appIconOverlay: some View {
-        if vm.notchState == .open && !musicManager.usingAppIconForArtwork {
-            AppIcon(for: musicManager.bundleIdentifier ?? "com.apple.Music")
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 30, height: 30)
-                .offset(x: 10, y: 10)
-                .transition(.scale.combined(with: .opacity))
-                .zIndex(2)
-        }
+        MusicControlsView()
     }
 }
 
 struct MusicControlsView: View {
     @ObservedObject var musicManager = MusicManager.shared
-        @EnvironmentObject var vm: BoringViewModel
-        @ObservedObject var webcamManager = WebcamManager.shared
+    @EnvironmentObject var vm: BoringViewModel
+    @ObservedObject var webcamManager = WebcamManager.shared
     @State private var sliderValue: Double = 0
     @State private var dragging: Bool = false
     @State private var lastDragged: Date = .distantPast
     @Default(.musicControlSlots) private var slotConfig
     @Default(.musicControlSlotLimit) private var slotLimit
+    @Default(.enableLyrics) private var enableLyrics
 
     var body: some View {
-        VStack(alignment: .leading) {
-            songInfoAndSlider
-            slotToolbar
+        GeometryReader { geo in
+            let textHeight = NSFont.preferredFont(forTextStyle: .headline).pointSize * 2.6
+                + (enableLyrics ? NSFont.preferredFont(forTextStyle: .subheadline).pointSize * 1.3 : 0)
+            let sliderHeight: CGFloat = 30
+            let toolbarHeight: CGFloat = 40
+            let spacing = min(6, max(0, (geo.size.height - textHeight - sliderHeight - toolbarHeight) / 3))
+
+            VStack(alignment: .leading, spacing: spacing) {
+                songInfo(width: geo.size.width)
+                Spacer(minLength: 0)
+                musicSlider
+                    .frame(height: sliderHeight)
+                slotToolbar(width: geo.size.width)
+                    .frame(height: toolbarHeight)
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
         }
         .buttonStyle(PlainButtonStyle())
     }
 
-    private var songInfoAndSlider: some View {
-        GeometryReader { geo in
-            VStack(alignment: .leading, spacing: 4) {
-                songInfo(width: geo.size.width)
-                musicSlider
-            }
-        }
-        .padding(.top, 10)
-        .padding(.leading, 5)
-    }
-
     private func songInfo(width: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MarqueeText(
-                $musicManager.songTitle, font: .headline, nsFont: .headline, textColor: .white,
-                frameWidth: width)
-            MarqueeText(
-                $musicManager.artistName,
-                font: .headline,
-                nsFont: .headline,
-                textColor: Defaults[.playerColorTinting]
-                    ? Color(nsColor: musicManager.avgColor)
-                        .ensureMinimumBrightness(factor: 0.6) : .gray,
-                frameWidth: width
-            )
-            .fontWeight(.medium)
-            if Defaults[.enableLyrics] {
+        let hasAlbumArtwork = !musicManager.usingAppIconForArtwork && musicManager.albumArt !== defaultImage
+        // Match the two metadata rows without increasing the height of the music panel.
+        let artworkSide = min(NSFont.preferredFont(forTextStyle: .headline).pointSize * 2.6, width / 4)
+        let artworkSpacing: CGFloat = hasAlbumArtwork ? min(8, width / 20) : 0
+        let textWidth = max(0, width - (hasAlbumArtwork ? artworkSide + artworkSpacing : 0))
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: artworkSpacing) {
+                VStack(alignment: .leading, spacing: 0) {
+                    MarqueeText(
+                        $musicManager.songTitle, font: .headline, nsFont: .headline, textColor: .white,
+                        frameWidth: textWidth)
+                    MarqueeText(
+                        $musicManager.artistName,
+                        font: .headline,
+                        nsFont: .headline,
+                        textColor: Defaults[.playerColorTinting]
+                            ? Color(nsColor: musicManager.avgColor)
+                                .ensureMinimumBrightness(factor: 0.6) : .gray,
+                        frameWidth: textWidth
+                    )
+                    .fontWeight(.medium)
+                }
+                .frame(width: textWidth)
+
+                if hasAlbumArtwork {
+                    Image(nsImage: musicManager.albumArt)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: artworkSide, height: artworkSide)
+                        .clipShape(RoundedRectangle(cornerRadius: artworkSide * 0.15))
+                        .accessibilityHidden(true)
+                }
+            }
+            if enableLyrics {
                 TimelineView(.animation(minimumInterval: 0.25)) { timeline in
                     let currentElapsed: Double = {
                         guard musicManager.isPlaying else { return musicManager.elapsedTime }
@@ -205,20 +137,19 @@ struct MusicControlsView: View {
             ) { newValue in
                 MusicManager.shared.seek(to: newValue)
             }
-            .padding(.top, 5)
-            .frame(height: 36)
         }
     }
 
-    private var slotToolbar: some View {
+    private func slotToolbar(width: CGFloat) -> some View {
         let slots = activeSlots
-        return HStack(spacing: 6) {
-            ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
-                slotView(for: slot)
-                    .frame(alignment: .center)
+        return ScrollView(.horizontal) {
+            HStack(spacing: 6) {
+                ForEach(Array(slots.enumerated()), id: \.offset) { _, slot in
+                    slotView(for: slot)
+                }
             }
+            .frame(minWidth: width, alignment: .center)
         }
-        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var activeSlots: [MusicControlButton] {
@@ -273,7 +204,7 @@ struct MusicControlsView: View {
                 MusicManager.shared.skip(seconds: 15)
             }
         case .none:
-            Color.clear.frame(height: 1)
+            Color.clear.frame(width: 30, height: 1)
         }
     }
 
@@ -423,7 +354,7 @@ struct NotchHomeView: View {
     @ObservedObject var webcamManager = WebcamManager.shared
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = BoringViewCoordinator.shared
-    let albumArtNamespace: Namespace.ID
+    @Default(.showCalendar) private var showCalendar
 
     var body: some View {
         Group {
@@ -440,25 +371,37 @@ struct NotchHomeView: View {
     }
 
     private var mainContent: some View {
-        HStack(alignment: .top, spacing: (shouldShowCamera && Defaults[.showCalendar]) ? 10 : 15) {
-            MusicPlayerView(albumArtNamespace: albumArtNamespace)
+        GeometryReader { geometry in
+            let spacing: CGFloat = shouldShowCamera && showCalendar ? 10 : 15
+            let panelCount = showCalendar ? 2 : 1
+            let gapCount = panelCount + (shouldShowCamera ? 1 : 0) - 1
+            let cameraSide = shouldShowCamera
+                ? min(geometry.size.height, geometry.size.width / 4) : 0
+            let panelWidth = max(
+                0, (geometry.size.width - cameraSide - spacing * CGFloat(gapCount)) / CGFloat(panelCount)
+            )
 
-            if Defaults[.showCalendar] {
-                CalendarView()
-                    .frame(width: shouldShowCamera ? 170 : 215)
-                    .onHover { isHovering in
-                        vm.isHoveringCalendar = isHovering
-                    }
-                    .environmentObject(vm)
-                    .transition(.opacity)
-            }
+            HStack(alignment: .top, spacing: spacing) {
+                MusicPlayerView()
+                    .frame(width: panelWidth, height: geometry.size.height)
 
-            if shouldShowCamera {
-                CameraPreviewView(webcamManager: webcamManager)
-                    .scaledToFit()
-                    .opacity(vm.notchState == .closed ? 0 : 1)
-                    .blur(radius: vm.notchState == .closed ? 20 : 0)
-                    .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.76, blendDuration: 0), value: shouldShowCamera)
+                if showCalendar {
+                    CalendarView()
+                        .frame(width: panelWidth, height: geometry.size.height)
+                        .onHover { isHovering in
+                            vm.isHoveringCalendar = isHovering
+                        }
+                        .environmentObject(vm)
+                        .transition(.opacity)
+                }
+
+                if shouldShowCamera {
+                    CameraPreviewView(webcamManager: webcamManager)
+                        .frame(width: cameraSide, height: cameraSide)
+                        .opacity(vm.notchState == .closed ? 0 : 1)
+                        .blur(radius: vm.notchState == .closed ? 20 : 0)
+                        .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.76, blendDuration: 0), value: shouldShowCamera)
+                }
             }
         }
         .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)), removal: .opacity))

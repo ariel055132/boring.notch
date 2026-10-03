@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SizePreferenceKey: PreferenceKey {
-    static var defaultValue: CGSize = .zero
+    static let defaultValue: CGSize = .zero
     static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
         value = nextValue()
     }
@@ -34,6 +34,12 @@ struct MarqueeText: View {
     @State private var animate = false
     @State private var textSize: CGSize = .zero
     @State private var offset: CGFloat = 0
+
+    private struct ScrollIdentity: Hashable {
+        let text: String
+        let textWidth: CGFloat
+        let frameWidth: CGFloat
+    }
     
     init(_ text: Binding<String>, font: Font = .body, nsFont: NSFont.TextStyle = .body, textColor: Color = .primary, backgroundColor: Color = .clear, minDuration: Double = 3.0, frameWidth: CGFloat = 200) {
         _text = text
@@ -47,6 +53,10 @@ struct MarqueeText: View {
     
     private var needsScrolling: Bool {
         textSize.width > frameWidth
+    }
+
+    private var scrollIdentity: ScrollIdentity {
+        ScrollIdentity(text: text, textWidth: textSize.width, frameWidth: frameWidth)
     }
     
     var body: some View {
@@ -66,28 +76,30 @@ struct MarqueeText: View {
                     self.animate ?
                         .linear(duration: Double(textSize.width / 30))
                         .delay(minDuration)
-                        .repeatForever(autoreverses: false) : .none,
+                        .repeatForever(autoreverses: false) : .linear(duration: 0),
                     value: self.animate
                 )
+                .id(scrollIdentity)
                 .background(backgroundColor)
                 .modifier(MeasureSizeModifier())
                 .onPreferenceChange(SizePreferenceKey.self) { size in
-                    self.textSize = CGSize(width: size.width / 2, height: NSFont.preferredFont(forTextStyle: nsFont).pointSize)
-                    self.animate = false
-                    self.offset = 0
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.01){
-                        if needsScrolling {
-                            self.animate = true
-                            self.offset = -(textSize.width + 10)
-                            
-                        }
-                    }
+                    // The HStack contains two copies separated by a 20-point gap.
+                    textSize = CGSize(width: max(0, (size.width - 20) / 2), height: size.height)
                 }
             }
             .frame(width: frameWidth, alignment: .leading)
             .clipped()
         }
-        .frame(height: textSize.height * 1.3)
-        
+        .frame(height: NSFont.preferredFont(forTextStyle: nsFont).pointSize * 1.3)
+        .task(id: scrollIdentity) {
+            // Reset when the text or its available width changes, including mirror toggles.
+            animate = false
+            offset = 0
+            guard frameWidth > 0, needsScrolling else { return }
+            try? await Task.sleep(for: .milliseconds(10))
+            guard !Task.isCancelled else { return }
+            offset = -(textSize.width + 20)
+            animate = true
+        }
     }
 }

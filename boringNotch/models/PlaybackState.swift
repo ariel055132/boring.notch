@@ -7,13 +7,13 @@
 
 import Foundation
 
-enum RepeatMode: Int, Codable {
+enum RepeatMode: Int, Codable, Sendable {
     case off = 1
     case one = 2
     case all = 3
 }
 
-struct PlaybackState {
+struct PlaybackState: Sendable {
     var bundleIdentifier: String
     var isPlaying: Bool = false
     var title: String = "I'm Handsome"
