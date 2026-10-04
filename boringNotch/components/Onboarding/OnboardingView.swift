@@ -129,6 +129,8 @@ struct OnboardingView: View {
                     onContinue: {
                         withAnimation(.easeInOut(duration: 0.6)) {
                             BoringViewCoordinator.shared.firstLaunch = false
+                            // External displays skip the welcome animation while the notch is hidden.
+                            BoringViewCoordinator.shared.helloAnimationRunning = false
                             step = .finished
                         }
                     }

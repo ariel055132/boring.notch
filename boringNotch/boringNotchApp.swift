@@ -241,6 +241,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func createBoringNotchWindow(for screen: NSScreen, with viewModel: BoringViewModel) -> NSWindow {
+        // Resolve the display policy before SwiftUI renders the first frame.
+        viewModel.screenUUID = screen.displayUUID
+        viewModel.closedNotchSize = getClosedNotchSize(screenUUID: screen.displayUUID)
+        if viewModel.notchState == .closed {
+            viewModel.notchSize = viewModel.closedNotchSize
+        }
+
         let rect = NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height)
         let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow]
         
@@ -258,6 +265,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 .environmentObject(viewModel)
         )
 
+        positionWindow(window, on: screen)
         window.orderFrontRegardless()
         NotchSpaceManager.shared.notchSpace.windows.insert(window)
 
@@ -425,15 +433,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        if !Defaults[.showOnAllDisplays] {
-            let viewModel = self.vm
-            let window = createBoringNotchWindow(
-                for: NSScreen.main ?? NSScreen.screens.first!, with: viewModel)
-            self.window = window
-            adjustWindowPosition(changeAlpha: true)
-        } else {
-            adjustWindowPosition(changeAlpha: true)
-        }
+        adjustWindowPosition(changeAlpha: true)
 
         setupDragDetectors()
 

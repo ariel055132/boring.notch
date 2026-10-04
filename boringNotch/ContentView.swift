@@ -100,21 +100,23 @@ struct ContentView: View {
                         : cornerRadiusInsets.closed.bottom
                     )
                     .padding([.horizontal, .bottom], vm.notchState == .open ? 12 : 0)
-                    .background(.black)
+                    .background(vm.isClosedNotchHidden ? Color.clear : Color.black)
                     .clipShape(currentNotchShape)
                     .overlay(alignment: .top) {
-                        Rectangle()
-                            .fill(.black)
-                            .frame(height: 1)
-                            .padding(.horizontal, topCornerRadius)
+                        if !vm.isClosedNotchHidden {
+                            Rectangle()
+                                .fill(.black)
+                                .frame(height: 1)
+                                .padding(.horizontal, topCornerRadius)
+                        }
                     }
                     .shadow(
-                        color: ((vm.notchState == .open || isHovering) && Defaults[.enableShadow])
+                        color: (!vm.isClosedNotchHidden && (vm.notchState == .open || isHovering) && Defaults[.enableShadow])
                             ? .black.opacity(0.7) : .clear, radius: Defaults[.cornerRadiusScaling] ? 6 : 4
                     )
                     .padding(
                         .bottom,
-                        vm.effectiveClosedNotchHeight == 0 ? 10 : 0
+                        vm.isClosedNotchHidden || vm.effectiveClosedNotchHeight == 0 ? zeroHeightHoverPadding : 0
                     )
                 
                 mainLayout
@@ -244,9 +246,22 @@ struct ContentView: View {
 
     @ViewBuilder
     func NotchLayout() -> some View {
+        ZStack(alignment: .top) {
+            if vm.isClosedNotchHidden {
+                // The outer padding and contentShape retain the top-center hover target.
+                Color.clear
+                    .frame(width: vm.closedNotchSize.width - 20, height: 0)
+            } else {
+                notchContent
+            }
+        }
+        .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], delegate: GeneralDropTargetDelegate(isTargeted: $vm.generalDropTargeting))
+    }
+
+    private var notchContent: some View {
         VStack(alignment: .leading) {
             VStack(alignment: .leading) {
-                if coordinator.helloAnimationRunning {
+                if coordinator.helloAnimationRunning && !vm.isOnExternalDisplay {
                     Spacer()
                     HelloAnimation(onFinish: {
                         vm.closeHello()
@@ -365,7 +380,6 @@ struct ContentView: View {
                 .opacity(gestureProgress != 0 ? 1.0 - min(abs(gestureProgress) * 0.1, 0.3) : 1.0)
             }
         }
-        .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], delegate: GeneralDropTargetDelegate(isTargeted: $vm.generalDropTargeting))
     }
 
     @ViewBuilder
@@ -528,7 +542,7 @@ struct ContentView: View {
             }
             
             guard vm.notchState == .closed,
-                  !coordinator.sneakPeek.show,
+                  (!coordinator.sneakPeek.show || vm.isClosedNotchHidden),
                   Defaults[.openNotchOnHover] else { return }
             
             hoverTask = Task {
@@ -538,7 +552,7 @@ struct ContentView: View {
                 await MainActor.run {
                     guard self.vm.notchState == .closed,
                           self.isHovering,
-                          !self.coordinator.sneakPeek.show else { return }
+                          (!self.coordinator.sneakPeek.show || self.vm.isClosedNotchHidden) else { return }
                     
                     self.doOpen()
                 }

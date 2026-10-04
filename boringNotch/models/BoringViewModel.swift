@@ -103,6 +103,18 @@ class BoringViewModel: NSObject, ObservableObject {
             .store(in: &cancellables)
     }
 
+    var isOnExternalDisplay: Bool {
+        guard let screenUUID, let screen = NSScreen.screen(withUUID: screenUUID) else {
+            return false
+        }
+        return !screen.isBuiltInDisplay
+    }
+
+    // Keep this policy separate from hideOnClosed, which follows fullscreen changes.
+    var isClosedNotchHidden: Bool {
+        notchState == .closed && isOnExternalDisplay
+    }
+
     // Computed property for effective notch height
     var effectiveClosedNotchHeight: CGFloat {
         let currentScreen = screenUUID.flatMap { NSScreen.screen(withUUID: $0) }
@@ -119,7 +131,7 @@ class BoringViewModel: NSObject, ObservableObject {
             return 0
         }
 
-        if notchState == .open { return 0 }
+        if notchState == .open || isClosedNotchHidden { return 0 }
 
         let menuBarHeight = currentScreen.frame.maxY - currentScreen.visibleFrame.maxY
         let currentHeight = effectiveClosedNotchHeight
