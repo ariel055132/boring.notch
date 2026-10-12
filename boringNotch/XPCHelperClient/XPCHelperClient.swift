@@ -112,6 +112,27 @@ final class XPCHelperClient: NSObject {
     
     // MARK: - Accessibility
 
+    func fetchClaudeUsage(_ request: ClaudeUsageRequest) async throws -> ClaudeUsageResult {
+        let service = ensureRemoteService()
+        let encoded = try JSONEncoder().encode(request)
+        let data: Data = try await service.withContinuation { service, continuation in
+            service.fetchClaudeUsage(encoded) { data, failure in
+                if let failure {
+                    continuation.resume(throwing: ClaudeUsageFailure(rawValue: failure) ?? .connection)
+                } else if let data {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: ClaudeUsageFailure.invalidResponse)
+                }
+            }
+        }
+        try Task.checkCancellation()
+        guard let result = try? JSONDecoder().decode(ClaudeUsageResult.self, from: data) else {
+            throw ClaudeUsageFailure.invalidResponse
+        }
+        return result
+    }
+
     func fetchCodexUsage(_ request: CodexUsageRequest) async throws -> CodexUsageResult {
         let service = ensureRemoteService()
         let encodedRequest = try JSONEncoder().encode(request)

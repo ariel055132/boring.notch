@@ -78,6 +78,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         WeatherManager.shared.stopBackgroundUpdates()
         CodexUsageManager.shared.stopBackgroundUpdates()
+        ClaudeUsageManager.shared.stopBackgroundUpdates()
         if let observer = screenLockedObserver {
             DistributedNotificationCenter.default().removeObserver(observer)
             screenLockedObserver = nil
@@ -95,6 +96,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func refreshWeatherAfterWake(_ notification: Notification) {
         WeatherManager.shared.loadIfNeeded()
         CodexUsageManager.shared.loadIfNeeded()
+        ClaudeUsageManager.shared.loadIfNeeded()
     }
 
     @MainActor
@@ -299,6 +301,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         WeatherManager.shared.startBackgroundUpdates()
         CodexUsageManager.shared.startBackgroundUpdates()
+        ClaudeUsageManager.shared.startBackgroundUpdates()
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(refreshWeatherAfterWake),
             name: NSWorkspace.didWakeNotification, object: nil

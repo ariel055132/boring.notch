@@ -8,15 +8,19 @@ struct CodexUsageView: View {
     @ObservedObject var manager: CodexUsageManager
     @State private var section: CodexUsageSection
     @State private var selectedDay: String?
+    private let provider: Binding<AIUsageProvider>?
 
-    init(manager: CodexUsageManager = .shared, section: CodexUsageSection = .overview) {
+    init(manager: CodexUsageManager = .shared, section: CodexUsageSection = .overview,
+         provider: Binding<AIUsageProvider>? = nil) {
         self.manager = manager
         _section = State(initialValue: section)
+        self.provider = provider
     }
 
     var body: some View {
         VStack(spacing: 7) {
             HStack {
+                if let provider { AIUsageProviderPicker(selection: provider) }
                 Picker("Codex usage view", selection: $section) {
                     Text("Remaining").tag(CodexUsageSection.overview)
                     Text("Last 7 days").tag(CodexUsageSection.history)

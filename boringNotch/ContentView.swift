@@ -367,7 +367,7 @@ struct ContentView: View {
                     case .weather:
                         WeatherView()
                     case .codexUsage:
-                        CodexUsageView()
+                        AIUsageView()
                     }
                 }
                 .transition(

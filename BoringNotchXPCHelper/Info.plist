@@ -4,6 +4,9 @@
 <dict>
 	<key>XPCService</key>
 	<dict>
+		<!-- Access the user's login Keychain and show prompts after Connect. -->
+		<key>JoinExistingSession</key>
+		<true/>
 		<key>ServiceType</key>
 		<string>Application</string>
 	</dict>

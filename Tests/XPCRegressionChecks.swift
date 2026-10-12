@@ -4,6 +4,15 @@ import Foundation
 private final class StubHelper: NSObject, BoringNotchXPCHelperProtocol, Sendable {
     let authorized: Bool
     init(authorized: Bool) { self.authorized = authorized }
+    func fetchClaudeUsage(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void) {
+        guard authorized else { reply(nil, ClaudeUsageFailure.permissionRequired.rawValue); return }
+        let query = try? JSONDecoder().decode(ClaudeUsageRequest.self, from: request)
+        let account = ClaudeUsageAccount(credentialID: "fixture", plan: "pro")
+        let snapshot = ClaudeUsageSnapshot(account: account,
+            windows: [.init(id: "five_hour", usedPercent: 3, resetsAt: nil)], fetchedAt: Date())
+        reply(try? JSONEncoder().encode(ClaudeUsageResult(account: account,
+            snapshot: query?.usage == true ? snapshot : nil)), nil)
+    }
     func fetchCodexUsage(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void) {
         if authorized {
             let snapshot = CodexUsageSnapshot(accountEmail: nil, plan: "plus", windows: [],
@@ -91,6 +100,10 @@ enum XPCRegressionChecks {
         let usage = try await client.fetchCodexUsage(.init(quota: true, history: true))
         try check(usage.quota?.credits == 42 && usage.quota?.plan == "plus", "Codex usage must survive real XPC Data serialization")
         try check(usage.history?.days.first?.tokens == 1234, "History flags and daily tokens must survive the XPC boundary")
+        let claude = try await client.fetchClaudeUsage(.init(usage: true))
+        try check(claude.snapshot?.windows.first?.remainingPercent == 97, "Claude usage must survive real XPC serialization")
+        let identity = try await client.fetchClaudeUsage(.init())
+        try check(identity.account?.plan == "pro" && identity.snapshot == nil, "Claude identity-only flag must cross XPC")
 
         client.startMonitoringAccessibilityAuthorization(every: 0.01)
         try check(client.isMonitoring, "Authorization monitoring must start")
@@ -121,6 +134,12 @@ enum XPCRegressionChecks {
             try check(false, "Codex login failure must not be swallowed")
         } catch let failure as CodexUsageFailure {
             try check(failure == .notSignedIn, "Codex XPC errors must preserve their typed state")
+        }
+        do {
+            _ = try await deniedClient.fetchClaudeUsage(.init(usage: true))
+            try check(false, "Claude Keychain failures must not be swallowed")
+        } catch let failure as ClaudeUsageFailure {
+            try check(failure == .permissionRequired, "Claude XPC errors must preserve their typed state")
         }
         return checks
     }

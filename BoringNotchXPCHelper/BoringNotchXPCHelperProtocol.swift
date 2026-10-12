@@ -9,6 +9,7 @@ import Foundation
 
 /// The protocol that this service will vend as its API. This protocol will also need to be visible to the process hosting the service.
 @objc protocol BoringNotchXPCHelperProtocol {
+    func fetchClaudeUsage(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void)
     func fetchCodexUsage(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void)
     func isAccessibilityAuthorized(with reply: @escaping @Sendable (Bool) -> Void)
     func requestAccessibilityAuthorization()

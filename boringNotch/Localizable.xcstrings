@@ -1329,6 +1329,9 @@
         }
       }
     },
+    "5 hours" : {
+
+    },
     "7 days" : {
 
     },
@@ -2235,6 +2238,9 @@
           }
         }
       }
+    },
+    "AI usage provider" : {
+
     },
     "All-day" : {
       "localizations" : {
@@ -4745,6 +4751,9 @@
         }
       }
     },
+    "Checking your Claude usage…" : {
+
+    },
     "Checking your Codex account and reported token usage…" : {
 
     },
@@ -5256,6 +5265,24 @@
           }
         }
       }
+    },
+    "Claude" : {
+
+    },
+    "Claude has no usage limits available for this account." : {
+
+    },
+    "Claude is limiting usage checks. The next update will wait longer." : {
+
+    },
+    "Claude returned an unreadable usage response." : {
+
+    },
+    "Claude took too long to respond. Updates will retry automatically." : {
+
+    },
+    "Claude usage" : {
+
     },
     "Clear" : {
 
@@ -5993,6 +6020,12 @@
         }
       }
     },
+    "Connect Claude Code" : {
+
+    },
+    "Connect to allow access to your Claude Code sign-in in macOS Keychain." : {
+
+    },
     "Continue" : {
       "localizations" : {
         "ar" : {
@@ -6292,6 +6325,9 @@
           }
         }
       }
+    },
+    "Could not retrieve Claude usage. Updates will retry automatically." : {
+
     },
     "Could not retrieve Codex usage. Updates will retry automatically." : {
 
@@ -14679,6 +14715,9 @@
         }
       }
     },
+    "Next check %@" : {
+
+    },
     "Next month" : {
 
     },
@@ -15791,6 +15830,9 @@
           }
         }
       }
+    },
+    "Open Claude" : {
+
     },
     "Open Codex" : {
 
@@ -17116,6 +17158,9 @@
     "Rain showers" : {
 
     },
+    "Refresh Claude usage" : {
+
+    },
     "Refresh Codex usage" : {
 
     },
@@ -18235,6 +18280,9 @@
         }
       }
     },
+    "Run /usage in Claude Code to refresh your sign-in, then reconnect here." : {
+
+    },
     "Running" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18337,6 +18385,9 @@
       }
     },
     "Secondary limit" : {
+
+    },
+    "See the remaining usage for your Claude subscription." : {
 
     },
     "See the remaining usage for your Codex plan." : {
@@ -20448,6 +20499,12 @@
     "Showing the last successful update." : {
 
     },
+    "Sign in to Claude Code with a Claude subscription to see your plan's usage." : {
+
+    },
+    "Sign in to Claude Code with your Claude subscription, then connect." : {
+
+    },
     "Sign in to Codex with your ChatGPT account, then refresh." : {
 
     },
@@ -21157,6 +21214,9 @@
           }
         }
       }
+    },
+    "Subscription usage" : {
+
     },
     "Support Us" : {
       "extractionState" : "stale",
@@ -22406,6 +22466,9 @@
     "Updates automatically every 3 minutes." : {
 
     },
+    "Updates automatically every 5 minutes." : {
+
+    },
     "Updates will retry after a cooldown." : {
 
     },
@@ -22510,6 +22573,12 @@
       }
     },
     "Usage checks are limited to once every 3 minutes, with a longer wait if Codex requests it." : {
+
+    },
+    "Usage checks are limited to once every 5 minutes, with a longer wait if Claude requests it." : {
+
+    },
+    "Usage limit" : {
 
     },
     "Use current location" : {
@@ -23137,6 +23206,21 @@
 
     },
     "Weekly" : {
+
+    },
+    "Weekly · All models" : {
+
+    },
+    "Weekly · Cowork" : {
+
+    },
+    "Weekly · OAuth apps" : {
+
+    },
+    "Weekly · Opus" : {
+
+    },
+    "Weekly · Sonnet" : {
 
     },
     "Welcome" : {

@@ -13,6 +13,17 @@ import CoreGraphics
 import os
 
 class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
+    func fetchClaudeUsage(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void) {
+        Task {
+            guard let query = try? JSONDecoder().decode(ClaudeUsageRequest.self, from: request) else {
+                reply(nil, ClaudeUsageFailure.invalidResponse.rawValue)
+                return
+            }
+            let result = await ClaudeUsageProbe.shared.fetch(query)
+            reply(try? JSONEncoder().encode(result), nil)
+        }
+    }
+
     func fetchCodexUsage(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void) {
         Task {
             do {

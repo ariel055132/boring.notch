@@ -13,6 +13,7 @@
 - 修正前的 warning 分類、數量與定位保留在第 13 節；修正後已切換 Swift 6／complete concurrency，Debug、Release 的 Swift 與 linker 警告均為 0，驗證範圍見第 14 節。
 - 下列路徑相對於 repo 根目錄。以檔案路徑與 symbol 定位，避免依賴容易變動的行號。
 - 後續修改前先確認目前程式碼與此快照的差異；行為、路徑或責任分工改變時，一併更新相關段落。
+- 2026-10-12 局部更新：以 `8f9b524` 加本次未提交變更核對 AI Usage／Claude／XPC 接線與測試（第 17 節）；其餘模組沿用原先驗證基準。
 
 ## 1. 後續修改時先查這張表
 
@@ -26,6 +27,7 @@
 | 鎖定畫面、跨 Spaces、錄影隱藏 | [BoringNotchSkyLightWindow.swift](boringNotch/components/Notch/BoringNotchSkyLightWindow.swift)、[NotchSpaceManager.swift](boringNotch/managers/NotchSpaceManager.swift)、[CGSSpace.swift](boringNotch/private/CGSSpace.swift) | AppDelegate 的 `onScreenLocked`／`onScreenUnlocked`；`showOnLockScreen`、`hideFromScreenRecording` |
 | Home／Shelf／Weather／AI Usage 分頁與預設頁面 | [BoringViewCoordinator.swift](boringNotch/BoringViewCoordinator.swift)、[BoringHeader.swift](boringNotch/components/Notch/BoringHeader.swift)、[TabSelectionView.swift](boringNotch/components/Tabs/TabSelectionView.swift) | `NotchViews.weather`／`.codexUsage`、`currentView`、`alwaysShowTabs`、`openLastTabByDefault`；`BoringViewModel.close` 也會選擇下次頁面；隱藏完整 tab bar 時仍保留天氣與用量入口；四頁同時顯示時縮小 tab 水平 padding |
 | Codex 訂閱剩餘額度／重設時間 | [CodexUsageView.swift](boringNotch/components/Usage/CodexUsageView.swift)、[CodexUsageManager.swift](boringNotch/managers/CodexUsageManager.swift)、[CodexUsageService.swift](boringNotch/Providers/CodexUsageService.swift)、[CodexUsageProbe.swift](BoringNotchXPCHelper/CodexUsageProbe.swift) | `fetchCodexUsage` XPC 方法、`CodexUsageLaunch.discover`、`CodexUsageProcess.fetch`、`CodexUsageParser.snapshot`；官方 app-server RPC，每 3 分鐘更新、失敗保留最多 30 分鐘，詳見第 16 節 |
+| Claude 訂閱剩餘額度／AI 服務切換 | [AIUsageView.swift](boringNotch/components/Usage/AIUsageView.swift)、[ClaudeUsageView.swift](boringNotch/components/Usage/ClaudeUsageView.swift)、[ClaudeUsageManager.swift](boringNotch/managers/ClaudeUsageManager.swift)、[ClaudeUsageProbe.swift](BoringNotchXPCHelper/ClaudeUsageProbe.swift) | `aiUsageProvider`、`fetchClaudeUsage`、`ClaudeUsageKeychain.read`、`ClaudeUsageParser.snapshot`；Claude Code Keychain OAuth 用量、5 分鐘更新、30 分鐘快取、跨重啟限流，詳見第 17 節 |
 | 目前地區天氣／逐時與七日預報 | [WeatherView.swift](boringNotch/components/Weather/WeatherView.swift)、[WeatherManager.swift](boringNotch/managers/WeatherManager.swift)、[WeatherService.swift](boringNotch/Providers/WeatherService.swift)、[WeatherLocationService.swift](boringNotch/Providers/WeatherLocationService.swift)、[WeatherModels.swift](boringNotch/models/WeatherModels.swift) | `startBackgroundUpdates`／`stopBackgroundUpdates`、`refreshInterval`／`maximumCacheAge`、`loadIfNeeded`／`refresh`、`forecast(for:)`／`decode`、`locate`／`placeName`；每 3 分鐘背景更新、30 分鐘快取有效期與 API 失敗狀態，詳見第 15 節；AppDelegate 負責啟停與喚醒接線 |
 | 音樂首頁、專輯縮圖、進度條、播放按鈕 | [NotchHomeView.swift](boringNotch/components/Notch/NotchHomeView.swift)、[MusicManager.swift](boringNotch/managers/MusicManager.swift) | 同一檔案含 `MusicPlayerView`、`MusicControlsView`、`MusicSliderView`、`VolumeControlView`、`CustomSlider`；`songInfo(width:)` 在歌名／作者右側顯示小封面，原本左側大型封面／App 圖示區已移除 |
 | 音樂按鈕排列與數量 | [MusicControlButton.swift](boringNotch/models/MusicControlButton.swift)、[MusicSlotConfigurationView.swift](boringNotch/components/Settings/MusicSlotConfigurationView.swift)、[NotchHomeView.swift](boringNotch/components/Notch/NotchHomeView.swift) | `musicControlSlots`、`musicControlSlotLimit`、`activeSlots`、`slotView` |
@@ -95,8 +97,8 @@ scripts/check-weather.sh       編譯／執行天氣資料、HTTP、快取與授
 3. `AppDelegate.applicationDidFinishLaunching` 註冊螢幕／設定／鎖定通知與快捷鍵，建立視窗和拖放監聽，必要時顯示 onboarding。
 4. `createBoringNotchWindow` 建立 `BoringNotchSkyLightWindow`，以 `NSHostingView(rootView: ContentView().environmentObject(viewModel))` 裝入 SwiftUI。
 5. `positionWindow` 將視窗放在目標螢幕頂端中央；`NotchSpaceManager` 管理專用 CGS space 中的視窗集合。
-6. `ContentView.NotchLayout` 依開合、音樂、電池與 HUD 狀態組裝內容；展開時按 `currentView` 切成 `NotchHomeView`、`ShelfView`、`WeatherView` 或 `CodexUsageView`。Weather／Codex 用量的更新由 AppDelegate 啟動，切頁與關閉 notch 不會停止更新。
-7. 結束時 AppDelegate 清理視窗、drag detectors、MusicManager、權限監聽與 Weather／Codex 用量背景工作。喚醒通知同時檢查兩項資料的刷新門檻。
+6. `ContentView.NotchLayout` 依開合、音樂、電池與 HUD 狀態組裝內容；展開時按 `currentView` 切成 `NotchHomeView`、`ShelfView`、`WeatherView` 或 `AIUsageView`。AI Usage 內切換 `CodexUsageView`／`ClaudeUsageView`。Weather／Codex／Claude 用量的更新由 AppDelegate 啟動，切頁與關閉 notch 不會停止更新。
+7. 結束時 AppDelegate 清理視窗、drag detectors、MusicManager、權限監聽與 Weather／Codex／Claude 用量背景工作。喚醒通知同時檢查三項資料的刷新門檻。
 
 `BoringNotchSkyLightWindow` 是透明的 `NSPanel`，層級為 `.mainMenu + 3`，不能成為 key／main window，並設定跨 Spaces 與全螢幕輔助顯示。鎖定時是否啟用 SkyLight 由 AppDelegate 決定；錄影隱藏選項對應 `sharingType`。
 
@@ -492,7 +494,7 @@ bash scripts/check-weather.sh /path/to/DerivedData/Build/Products/Debug
 
 ## 16. Codex 用量分頁（2026-10-03；每日統計更新於 2026-10-04）
 
-目前支援 Codex，tab 名稱為 **AI Usage**，位置在 Weather 右側。沿用 `640 × 190` 的展開尺寸，內部以 **Remaining／Last 7 days** 切換剩餘額度與每日 Token 統計。Remaining 顯示方案、帳號、credits、剩餘比例與重設時間；`Open Codex` 位於右下方 Updated 時間上方，兩者靠右對齊，刷新按鈕與時間同列。Last 7 days 顯示每日柱狀圖、選取日期的 Token 數量、最近 7 天已回報的合計、已回報天數、資料最新日期與最後成功查詢時間。未安裝 CodexBar，也未引入它的套件或背景服務。
+tab 名稱為 **AI Usage**，位置在 Weather 右側；2026-10-12 起由 `AIUsageView` 在頁內切換 Codex／Claude（Claude 見第 17 節）。沿用 `640 × 190` 的展開尺寸，Codex 內以 **Remaining／Last 7 days** 切換剩餘額度與每日 Token 統計。Remaining 顯示方案、帳號、credits、剩餘比例與重設時間；`Open Codex` 位於右下方 Updated 時間上方，兩者靠右對齊，刷新按鈕與時間同列。Last 7 days 顯示每日柱狀圖、選取日期的 Token 數量、最近 7 天已回報的合計、已回報天數、資料最新日期與最後成功查詢時間。未安裝 CodexBar，也未引入它的套件或背景服務。
 
 ```mermaid
 flowchart LR
@@ -540,3 +542,40 @@ bash scripts/check-weather.sh /path/to/DerivedData/Build/Products/Debug
 ```
 
 這次的 Debug log 為 `/tmp/boring-notch-codex-usage-debug.log`，Release log 為 `/tmp/boring-notch-swift6-release.log`。沒有修改 signing team、增加 entitlement 或新增 SPM 相依套件。
+
+## 17. Claude 訂閱用量（2026-10-12）
+
+本節只核對 `8f9b524` 之後本次未提交的 Claude／AI Usage／XPC 修改，沒有重新審查其餘模組。
+
+| 修改內容 | 定位與行為 |
+|---|---|
+| 入口與介面 | [AIUsageView.swift](boringNotch/components/Usage/AIUsageView.swift)：`AIUsageProvider`／`AIUsageProviderPicker`；`@AppStorage("aiUsageProvider")` 保存 Codex／Claude 選擇。`NotchViews.codexUsage` 保留原 case，`ContentView` 改接共用入口，頂層 tab 仍為 AI Usage。provider 選擇器與 Codex 的 Remaining／Last 7 days 同一列 |
+| Claude 額度 UI | [ClaudeUsageView.swift](boringNotch/components/Usage/ClaudeUsageView.swift)：`usage`、`windowRow`、`emptyState`；顯示方案、5 小時／每週剩餘百分比、重設時間、最後更新與 `Open Claude`。額外模型額度有回報才顯示；列表可捲動。比例缺失或重設時間已過顯示 unavailable，不能推算成 100%。不提供未經來源支援的 Claude 每日 token 歷史 |
+| 資料與錯誤模型 | [ClaudeUsageModels.swift](boringNotch/models/ClaudeUsageModels.swift)：app／helper 共用 `ClaudeUsageRequest`、`ClaudeUsageResult`、`ClaudeUsageSnapshot`。XPC 與快取只包含 SHA-256 憑證指紋、方案、額度與固定錯誤類別；沒有 access token／refresh token／原始伺服器內容 |
+| XPC 邊界 | [ClaudeUsageService.swift](boringNotch/Providers/ClaudeUsageService.swift) → [XPCHelperClient.swift](boringNotch/XPCHelperClient/XPCHelperClient.swift) 的 `fetchClaudeUsage` → [BoringNotchXPCHelper.swift](BoringNotchXPCHelper/BoringNotchXPCHelper.swift)。兩份 `BoringNotchXPCHelperProtocol.swift` 必須同步；新增 shared models 的兩個 target membership 在 `project.pbxproj`，helper 其餘檔案由 synchronized group 納入 |
+| XPC 登入工作階段 | [Info.plist](BoringNotchXPCHelper/Info.plist) 的 `XPCService.JoinExistingSession = true` 讓 helper 加入呼叫 App 的 security session，以存取登入鑰匙圈。缺少此設定時，完整 App 內的 Connect 會立即收到 `CSSMERR_CSP_NO_USER_INTERACTION`，即使允許互動仍無法顯示授權提示；獨立 Probe／anonymous XPC 測試不會涵蓋這個 launchd 啟動條件。依據 [Apple XPC 設定文件](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingXPCServices.html) |
+| 登入與 HTTP | [ClaudeUsageProbe.swift](BoringNotchXPCHelper/ClaudeUsageProbe.swift)：只讀取 Keychain 的 `Claude Code-credentials`；背景讀取使用 `LAContext.interactionNotAllowed`，只有明確點 Connect 才可顯示 macOS 授權提示。用既有 OAuth token 對固定 `https://api.anthropic.com/api/oauth/usage` GET，設定 `anthropic-beta: oauth-2025-04-20` 與本 App User-Agent。拒絕 redirect、停用 cookies／URL cache、20 秒 request／25 秒 resource timeout、stream 最多 1 MiB，同參數並行請求合併 |
+| 解析 | [ClaudeUsageParser.swift](BoringNotchXPCHelper/ClaudeUsageParser.swift)：`credential` 驗證 expiresAt／profile scope 並產生指紋；`snapshot` 只解析已知 window key、容許 null、不把未知值當零，支援有／無小數秒 ISO 日期。額度／日期型別錯誤明確失敗；401、403、429、5xx 有獨立狀態，Retry-After 支援秒數及 HTTP 日期 |
+| 排程與快取 | [ClaudeUsageManager.swift](boringNotch/managers/ClaudeUsageManager.swift)：共用 300 秒 HTTP 門檻，呼叫前先持久化，手動／喚醒／切頁／重啟不能繞過。先做不連網的 identity check 才顯示快取；指紋改變即丟棄舊資料。限流依 10／20／30 分鐘退避，尊重更長 Retry-After。資料 30 分鐘過期，限流與 pending request 期間也會清除；stop 後晚到回覆不可更新 UI。`ClaudeUsageFileStore` 保存 `Application Support/boringNotch/ClaudeUsage.json`，atomic write、0600 權限，保存失敗有提示 |
+| 啟停 | [boringNotchApp.swift](boringNotch/boringNotchApp.swift)：AppDelegate 啟動、終止與喚醒接上 `ClaudeUsageManager`，provider 切換沿用同一查詢門檻 |
+
+認證更新仍由 Claude Code 管理；本 App 不執行登入／登出、不改 Keychain、不更新 refresh token、不呼叫模型。既有登入過期時提示在 Claude Code 執行 `/usage` 再 Connect；當時實測 `/usage` 自動更新既有登入，未要求重新登入。macOS Keychain 的存取授權是另一個獨立提示。未新增相依套件或 entitlement。
+
+官方文件確認訂閱限額有五小時與七天視窗（[Claude Code statusline](https://code.claude.com/docs/en/statusline)）；目前 HTTP schema／Keychain 格式另依本機 Claude Code `2.1.286` 和真實回應核對。`/api/oauth/usage` 並非本專案可依賴穩定性的公開 API 契約，後續來源變動應優先檢查 Probe／Parser；不能把本機 token 統計當作訂閱剩餘額度。
+
+### 驗證與後續修改入口
+
+- Xcode Debug build 通過，無 Swift／linker warning，保留既有 AppIntents metadata 提示。
+- [ClaudeUsageProbeChecks.swift](Tests/ClaudeUsageProbeChecks.swift)：53 項離線 parser／HTTP transport 檢查，涵蓋百分比、null、兩種日期、無效／超量回應、登入期限／scope、secret 不外洩、固定 endpoint／headers、identity 不連網、錯誤與 timeout、Retry-After、並行合併和 redirect 拒絕。
+- [ClaudeUsageRegressionChecks.swift](Tests/ClaudeUsageRegressionChecks.swift)：34 項 manager／cache 檢查，涵蓋虛擬時鐘背景排程、點擊合併、重啟、Keychain prompt 旗標、帳號／憑證變更、手動 reconnect 不繞過冷卻、長限流、pending 到期／取消、快取毀損／版本／0600 權限／寫入失敗。
+- [check-claude-usage.sh](scripts/check-claude-usage.sh) 額外檢查編譯後 App 內嵌 helper 的 `JoinExistingSession` 布林值；已確認舊產物會失敗，修正後重新建置的產物通過，並重跑上述 87 項檢查。
+- Codex 43 項 probe + 45 項 manager／history 回歸檢查通過；並行／月曆／真實 anonymous XPC 共 66 項通過，其中新加入 Claude usage、identity-only 和 permission failure 的 Data 往返。
+- 真實 Swift Probe 使用既有 Claude Code Pro 登入成功讀到兩個 window 與重設時間。修正 helper 的 security session 後，另以 Xcode 的 Release Run 重新建置並重啟完整 App，實際點擊 `AI Usage → Claude → Connect Claude Code`，確認 helper 收到 HTTP 200，頁面顯示 Pro、5 小時／每週剩餘比例與重設時間；無須重新登入。僅檢查方案及額度，不印出憑證，未用真實 API 做大量限流測試。
+- UI 以實際 App module 的 Claude／Codex views、離線資料與 NSHostingView 檢查，共 10 種配置（Claude 正常／Keychain 授權／登入過期／限流的兩種寬度，加 Codex Remaining／History）。Claude 的 footer 合併為單列，576／496 pt 內容寬、130 pt 高均能完整顯示兩個額度與重設時間。離屏截圖個別原生控制項偶爾省略圖層；完整 App 已完成上述 Claude 真實查詢與畫面操作，尚未測試 macOS 14／Intel。
+
+```sh
+# 先完成 Debug build；以下都是離線 fixture，不讀取真實 Claude 憑證。
+bash scripts/check-claude-usage.sh /path/to/DerivedData/Build/Products/Debug
+bash scripts/check-codex-usage.sh /path/to/DerivedData/Build/Products/Debug
+bash scripts/check-concurrency.sh /path/to/DerivedData/Build/Products/Debug
+```
