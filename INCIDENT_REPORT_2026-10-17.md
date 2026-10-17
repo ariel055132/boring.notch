@@ -2,6 +2,8 @@
 
 事故確認日期：2026-10-17，時區 Asia/Taipei。
 
+交付日期：2026-10-18。程式修正、重新安裝與測試在 10 月 17 日完成，跨日完成分支推送與文件交付。
+
 Boring Notch 在接收音量、靜音或預設音訊輸出裝置通知時，可能因 Swift 6 的 actor 隔離檢查而終止。六份本機崩潰報告均指向 `VolumeManager.setupAudioListener()`。修正將四處 CoreAudio listener 的派送佇列指定為主佇列，讓系統進入 Swift 回呼時就符合 `MainActor` 的要求。
 
 ## 使用者遇到的情況與影響
@@ -112,6 +114,8 @@ bash scripts/check-volume-listeners.sh
 依使用者同意的流程，從 `codex/next-feature` 建立 `codex/fix-audio-listener-crash`。修正提交為 `60a77e1`（`Fix MainActor crashes in CoreAudio volume callbacks`），文件另行提交。驗證後以 fast-forward 將整個修復分支納入自己的 `main`，保留原先七個 commit 及本次修正的完整歷史；原作者的 `upstream` 不變。
 
 更新後的分支用途與同步流程見 [FORK_SYNC_GUIDE.md](FORK_SYNC_GUIDE.md)。`main` 作為個人化版本基準，後續功能從它另開分支。
+
+本機 main 已由 `64b5459` fast-forward 至包含修正與文件的 `4678aab`。命令列 push 因沒有可用的 HTTPS 認證而失敗，改用已登入的 GitHub Desktop 成功推送到 `ariel055132/boring.notch`；沒有變更帳號憑證或強制推送。後續文件補充同樣保存於 main。
 
 2026-10-17 23:54 已替換 `/Applications/Boring Notch.app`。舊版完整保留在 `~/Downloads/Boring Notch before audio fix 2026-10-17.app`；必要時先結束新版，再用該備份取代應用程式副本。回復舊版也會回到本次已確認的音訊崩潰風險。
 
