@@ -20,3 +20,6 @@ xcrun swiftc -swift-version 6 -strict-concurrency=complete -warnings-as-errors \
   -Xlinker -rpath -Xlinker "$regression_app_dir/Contents/Frameworks" \
   -o "$regression_build_dir/checks"
 "$regression_build_dir/checks"
+
+# Keep the C-to-Swift callback boundary in the audio regression checks.
+bash "$regression_repo_root/scripts/check-volume-listeners.sh"
