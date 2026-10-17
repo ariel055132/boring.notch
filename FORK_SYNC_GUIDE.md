@@ -4,6 +4,38 @@
 
 整理日期：2026-10-03。以下名稱依目前這份 repo 的設定撰寫；日後若更換帳號或分支，請替換成當時使用的名稱。
 
+## 2026-10-17 分支策略更新
+
+本次音訊崩潰修正後，依使用者同意的流程，將 `codex/next-feature` 的完整個人化功能與修正合回自己的 `main`。從這次合併起，`main` 用作個人化穩定版本；原作者的基準由 `upstream/main` 表示。以下第 1 節起保留 2026-10-03 的舊操作流程作歷史參考，後續開發與同步以本節為準。
+
+| 分支 | 目前用途 |
+|---|---|
+| `main`／`origin/main` | 已驗證的個人化版本，包含月曆、天氣、AI 用量及崩潰修正 |
+| `upstream/main` | 原作者的版本參考 |
+| `codex/next-feature` | 保留 2026-10-12 的功能快照；其內容已納入 main |
+| `codex/fix-audio-listener-crash` | 本次修復與驗證紀錄 |
+
+後續新增功能：先更新 `main`，再從它建立新的功能分支；修改與驗證完成後合回 `main`，推送到自己的 `origin`。
+
+同步原作者時，在新的整合分支執行一般 merge，驗證完成後再合回 `main`：
+
+```bash
+git fetch origin
+git fetch upstream
+git switch main
+git merge --ff-only origin/main
+git switch -c codex/sync-upstream-YYYY-MM-DD
+git merge upstream/main
+# 解決衝突，完成建置與適用的回歸檢查，提交整合分支上的修正。
+git switch main
+git merge --ff-only codex/sync-upstream-YYYY-MM-DD
+git push origin main
+```
+
+若 `--ff-only` 拒絕合併，先檢查分歧並在整合分支處理。現在自己的 `main` 包含客製 commit，不能再把它當作與上游完全相同的鏡像；同步時需保留這些提交。
+
+本次問題與驗證見 [事故報告](INCIDENT_REPORT_2026-10-17.md)，對話見 [本次紀錄](CONVERSATION_LOG_2026-10-17.md)。
+
 ## 1. 遠端與分支的分工
 
 | 遠端名稱 | GitHub repository | 用途 |

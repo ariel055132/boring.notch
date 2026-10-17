@@ -6,6 +6,8 @@
 
 本次需求、討論、進度與回覆的完整文字紀錄，另見 [CONVERSATION_LOG.md](CONVERSATION_LOG.md)。
 
+2026-10-17 音訊回呼崩潰的原因與修正見 [事故報告](INCIDENT_REPORT_2026-10-17.md)，該次討論另存於 [對話紀錄](CONVERSATION_LOG_2026-10-17.md)。
+
 - 整理日期：2026-10-03。
 - 閱讀基準：commit `d58240c`，專案設定版本 `2.7.3`、build `271`；已補入 2026-10-03 的音樂首頁、月曆、Swift 6 遷移、天氣頁與 Codex 用量頁修改（見第 5、8、14、15、16 節）。前四項功能已包含於 `06a8061`，第 16 節為其後新增。
 - 當時規模：123 個 Swift 檔案，約 19,600 行，包含主 App 與 XPC helper。
@@ -14,6 +16,7 @@
 - 下列路徑相對於 repo 根目錄。以檔案路徑與 symbol 定位，避免依賴容易變動的行號。
 - 後續修改前先確認目前程式碼與此快照的差異；行為、路徑或責任分工改變時，一併更新相關段落。
 - 2026-10-12 局部更新：以 `8f9b524` 加本次未提交變更核對 AI Usage／Claude／XPC 接線與測試（第 17 節）；其餘模組沿用原先驗證基準。
+- 2026-10-17 局部更新：以 `60a77e1` 核對 VolumeManager 與音訊回呼回歸測試（第 7、14 節）；其餘模組沿用原先驗證基準。
 
 ## 1. 後續修改時先查這張表
 
@@ -226,6 +229,8 @@ Manager／Interceptor
 `MediaKeyInterceptor` 解碼 system-defined event，處理音量、靜音、螢幕亮度與鍵盤背光按鍵，也處理 Option、Shift、Command 修飾鍵。`optionKeyAction` 決定是否開系統設定、顯示 HUD 或不動作。輔助使用權限檢查經 helper，但 event tap 本身建立在主 App。
 
 `VolumeManager` 操作預設音訊輸出裝置的 CoreAudio properties，包含主／個別聲道音量、裝置變更監聽及 software mute fallback。播放器自己的 volume 另由 MusicManager／Controller 處理，兩者責任不同。
+
+2026-10-17 修正：`setupAudioListener()` 的預設輸出裝置、主音量、個別聲道與靜音四處 `AudioObjectAddPropertyListenerBlock` 均指定 `DispatchQueue.main`。這些 block 在 `@MainActor` 環境建立；若 queue 為 `nil`，CoreAudio 可在背景執行緒直接呼叫，Swift 6 會在進入 block 時觸發隔離檢查，內部的 `Task { @MainActor ... }` 來不及執行。不可將任一處改回 `nil`；回歸驗證見第 14 節。
 
 `XPCHelperClient.ensureRemoteService` 延遲建立 NSXPCConnection，服務名稱為 `theboringteam.boringnotch.BoringNotchXPCHelper`，使用 AsyncXPCConnection 將 reply callback 包成 async 呼叫。整個 client／monitoring 狀態受 MainActor 隔離；連線先設定 interface 才 resume。`connectionGeneration` 防止舊連線的中斷／失效 callback 清掉新連線；`init(connectionFactory:)` 供真實 anonymous XPC 連線測試使用，正式初始化仍使用固定 service name。
 
@@ -452,6 +457,14 @@ python3 -m unittest discover -s .github/scripts/tests -p test_workflow_smoke.py
 腳本使用本機架構與 macOS 14 target；預設 Xcode 路徑為 `/Applications/Xcode.app/Contents/Developer`，也可先設定 `DEVELOPER_DIR`。需要標準 Debug build 產生的 `Boring_Notch` module 與 `Boring Notch.debug.dylib`，不適用於 Release 產物。
 
 當次暫存證據：`/tmp/boring-notch-swift5-complete-passed.log`、`/tmp/boring-notch-swift6-stage1.log`（最終 Swift 6 Debug）、`/tmp/boring-notch-swift6-release.log`、`/tmp/boring-notch-swift6-ui/`（renderer／7 張圖）；本機 DerivedData 在 `/tmp/boring-notch-swift6-build`。這些可被系統清除，長期定位以 repo 內的原始碼、Tests 與本文件為準。
+
+2026-10-17 新增音訊回呼回歸：[Tests/VolumeListenerRegressionChecks.swift](Tests/VolumeListenerRegressionChecks.swift)、[Tests/Fixtures/VolumeListenerFixture.c](Tests/Fixtures/VolumeListenerFixture.c) 與 [scripts/check-volume-listeners.sh](scripts/check-volume-listeners.sh)。直接編譯正式 `VolumeManager.swift`，保留 CoreAudio 的 C 宣告與 block 橋接，以測試執行檔中的 C fixture 取代硬體讀寫；背景通知遵守註冊的 queue。測試涵蓋主音量、左右聲道 fallback、靜音／取消靜音、預設輸出裝置切換後讀取新裝置，以及已發布狀態／時間戳。`-Onone` 與 `-O` 合計 52 項檢查；舊程式的負向對照可重現 `SIGTRAP` 與 `VolumeManager.setupAudioListener()` 隔離檢查堆疊。此測試已接入 `check-concurrency.sh`，亦可獨立執行：
+
+```bash
+bash scripts/check-volume-listeners.sh
+```
+
+這些測試不更動實際系統音量或音訊裝置。`VOLUME_MANAGER_SOURCE=/path/to/old/VolumeManager.swift` 可指定舊版來源做負向對照；舊版預期崩潰，僅在獨立測試程序執行。切換真實藍牙／USB 裝置及長時間穩定性仍需實機觀察。
 
 驗證邊界：尚未在 macOS 14／Intel 實機測試，亦未完整操作真實 TCC 授權、亮度按鍵、各播放器／封面更新、EventKit 行程、AirDrop／系統分享、多螢幕與攝影機硬體；上述自動檢查不等於這些端到端流程已全部驗證。未建立 commit、推送、archive 或發布。
 
