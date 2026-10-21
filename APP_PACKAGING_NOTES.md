@@ -163,3 +163,41 @@ open '/Applications/Boring Notch.app'
 - 如需登入時啟動，可在 App 設定開啟 **Launch at login**；本次未代為變更此選項。
 - 修改程式碼後，重新建置 Release，再結束舊版並替換 `/Applications/Boring Notch.app`；已安裝副本不會因 Xcode 建置自動更新。
 - `/tmp` 下的產物與日誌是暫存檔，不應當作永久備份；修正本身已保存在專案的 entitlements 檔案。
+
+## 7. 本機固定簽署身分與 Claude Keychain 授權
+
+2026-10-22 新增可攜的本機簽署設定。ad-hoc 簽章的 designated requirement 綁定特定版本；重新編譯 XPC helper 後，Keychain 可能無法將新版視為已授權的同一個程式。固定憑證與程式識別碼可讓授權跨版本延續。[Apple TN3127](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements)
+
+Project 的 Debug／Release 共用 [Configuration/LocalBuild.xcconfig](Configuration/LocalBuild.xcconfig)，預設保留 `-` ad-hoc 簽署與 `Automatic`。此檔案最後會選擇性載入同資料夾的 `LocalSigning.xcconfig`；後者已加入 `.gitignore`，不會將個人簽署設定帶到其他電腦。App 與 XPC helper 的兩種組態都使用同一組變數。
+
+有可用的固定 code-signing identity 時，在 `Configuration/LocalSigning.xcconfig` 設定：
+
+```xcconfig
+BORING_NOTCH_CODE_SIGN_IDENTITY = 憑證的40位SHA1指紋
+BORING_NOTCH_CODE_SIGN_STYLE = Manual
+```
+
+指紋可由 `security find-identity -p codesigning` 取得；填入實際憑證指紋，並保留對應的私鑰供後續建置使用。此設定檔只記錄簽署身分選擇，不存放私鑰或 Claude credentials，也不更改 Keychain ACL、信任設定或 entitlements。正式 Apple 簽署身分仍須依其條件設定相應的 Development Team。
+
+本機自用可使用 [scripts/setup-local-signing.py](scripts/setup-local-signing.py) 建立或沿用專用簽署身分。腳本會先以不同測試程式驗證同一簽署身分產生相容的 designated requirement，成功後才寫入上述設定；不將私鑰或憑證內容寫入 repository。
+
+重新建置與安裝時須保留簽署，不使用 `CODE_SIGNING_ALLOWED=NO`。第一次從 ad-hoc 切換成固定簽章後，仍需在 Claude 用量頁按 Connect，於系統提示選擇「永遠允許」。之後每次建置使用同一身分，背景更新沿用該授權；背景讀取仍禁止顯示授權視窗。若 Claude Code 登出後重建 credential 項目、使用者移除授權或更換簽署身分，仍可能需要再次 Connect。
+
+後續本機更新應保留 `Configuration/LocalSigning.xcconfig` 與 login Keychain 內的同一簽署身分，照原有 Debug／Release 建置流程執行即可；不需每次重建憑證。重新安裝前，確認 App／helper 仍由原憑證簽署，避免移除本機設定後回退為 ad-hoc。
+
+建置完成後可檢查實際 helper 的 designated requirement，確認以憑證身分識別，而非只有 `cdhash`，再驗證整包簽章：
+
+```bash
+codesign -d -r- '/path/to/Boring Notch.app/Contents/XPCServices/BoringNotchXPCHelper.xpc'
+codesign --verify --deep --strict '/path/to/Boring Notch.app'
+```
+
+2026-10-22 本機驗證：已在 login Keychain 建立並重用 `Boring Notch Local Signing`，沒有修改系統信任設定。setup 使用兩個內容不同的暫存程式確認相同 designated requirement 與不同 CDHash，並驗證重跑沿用原身分。私鑰以不可匯出、僅授權 `/usr/bin/codesign` 的方式匯入；暫存私鑰隨即移除，repo 只保存建置入口。
+
+Debug／Release 建置、Claude 135 項、Codex 88 項、並行 66 項及音訊 listener 52 項檢查全部通過。正式 App 與 helper 均以固定憑證簽署，整包 `codesign --verify --deep --strict` 通過。00:24 已安裝並重新啟動 `/Applications/Boring Notch.app`，當次 App PID 為 `47712`、helper PID 為 `47727`；前版保留為 Downloads 的 `Boring Notch before persistent signing 2026-10-22.app`。
+
+2026-10-22 00:25:00.731（Asia/Taipei）的 `securityd` 紀錄確認使用者已對安裝版 helper 選擇 `always allow`。隨後 00:25:00.750 的非互動讀取紀錄為 LAContext `1000 = 1`，00:25:01.405 收到 HTTP 200，確認授權後首次 Claude 用量查詢成功。
+
+00:28:28 完成授權後重啟，App PID 由 `47712` 變為 `47870`，helper PID 由 `47727` 變為 `47882`。新 helper 在 00:28:27.977 執行非互動啟動身分確認（LAContext `1000 = 1`）；00:30:02.408 原本的五分鐘背景輪詢再次非互動讀取，00:30:03.076 收到 HTTP 200。從此次重啟到該次輪詢完成，系統紀錄沒有 Keychain prompt、再次授權或存取拒絕事件，已完成重啟與五分鐘定時背景更新驗證；此結果不代表已驗證長時間運作、睡眠喚醒或 credential 項目重建。
+
+本次建置、測試與安裝紀錄位於 `/tmp/boring-notch-persistent-signing/`。午夜後原 `/tmp` 套件 checkout 檔案不完整，已逐一核對 12 組 `Package.resolved` revision，改用 Xcode 既有且 revision 相同的 SourcePackages；未更新依賴版本。

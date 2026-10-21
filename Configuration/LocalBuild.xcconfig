@@ -1,0 +1,7 @@
+// Keep a fresh checkout usable without a personal code-signing certificate.
+BORING_NOTCH_CODE_SIGN_IDENTITY = -
+BORING_NOTCH_CODE_SIGN_STYLE = Automatic
+
+// This machine-specific file is ignored by Git. Reuse the same signing
+// identity across builds so Keychain can recognize the updated helper.
+#include? "LocalSigning.xcconfig"

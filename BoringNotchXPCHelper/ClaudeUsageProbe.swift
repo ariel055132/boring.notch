@@ -2,8 +2,48 @@ import Foundation
 import LocalAuthentication
 import Security
 
+struct ClaudeUsageKeychainClient {
+    let getInteractionAllowed: (inout Bool) -> OSStatus
+    let setInteractionAllowed: (Bool) -> OSStatus
+    let copyMatching: (CFDictionary, inout CFTypeRef?) -> OSStatus
+
+    // Claude Code stores its credential in the legacy login Keychain. Its ACL
+    // prompts are not controlled by LAContext; these deprecated APIs are still
+    // required for that store. Keep the exception scoped to this adapter.
+    #if compiler(>=6.4)
+    @diagnose(DeprecatedDeclaration, as: ignored)
+    #endif
+    static var live: Self {
+        .init(getInteractionAllowed: { allowed in
+                  var value = DarwinBoolean(false)
+                  let status = SecKeychainGetUserInteractionAllowed(&value)
+                  allowed = value.boolValue
+                  return status
+              },
+              setInteractionAllowed: { SecKeychainSetUserInteractionAllowed($0) },
+              copyMatching: { SecItemCopyMatching($0, &$1) })
+    }
+}
+
 enum ClaudeUsageKeychain {
-    static func read(allowInteraction: Bool) throws -> Data {
+    // The legacy interaction switch is process-wide. All Keychain reads in this
+    // helper must hold this lock until the original policy has been restored.
+    private static let interactionLock = NSLock()
+
+    static func read(allowInteraction: Bool,
+                     client: ClaudeUsageKeychainClient = .live) throws -> Data {
+        interactionLock.lock()
+        defer { interactionLock.unlock() }
+
+        var previousInteraction = false
+        guard client.getInteractionAllowed(&previousInteraction) == errSecSuccess else {
+            throw ClaudeUsageFailure.permissionRequired
+        }
+        guard client.setInteractionAllowed(allowInteraction) == errSecSuccess else {
+            _ = client.setInteractionAllowed(previousInteraction)
+            throw ClaudeUsageFailure.permissionRequired
+        }
+
         let context = LAContext()
         context.interactionNotAllowed = !allowInteraction
         context.localizedReason = String(localized: "Read your Claude subscription usage")
@@ -15,13 +55,19 @@ enum ClaudeUsageKeychain {
             kSecUseAuthenticationContext as String: context
         ]
         var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        let status = client.copyMatching(query as CFDictionary, &item)
+        // Restore before interpreting the result, including every failure path.
+        guard client.setInteractionAllowed(previousInteraction) == errSecSuccess else {
+            throw ClaudeUsageFailure.permissionRequired
+        }
         switch status {
         case errSecSuccess:
             guard let data = item as? Data else { throw ClaudeUsageFailure.notSignedIn }
             return data
         case errSecItemNotFound: throw ClaudeUsageFailure.notSignedIn
-        case errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled:
+        case errSecInteractionNotAllowed, errSecInteractionRequired,
+             errSecAuthFailed, errSecUserCanceled, errSecNotAvailable,
+             OSStatus(CSSMERR_CSP_NO_USER_INTERACTION), OSStatus(CSSMERR_CSP_IN_DARK_WAKE):
             throw ClaudeUsageFailure.permissionRequired
         default: throw ClaudeUsageFailure.connection
         }

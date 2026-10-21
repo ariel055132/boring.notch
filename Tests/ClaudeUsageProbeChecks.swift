@@ -1,5 +1,46 @@
 import Foundation
+import LocalAuthentication
+import Security
 import os
+
+// All Keychain behavior is simulated. These checks never call Security APIs or
+// query the real Claude Code credential.
+private final class ClaudeKeychainStub {
+    var interactionAllowed: Bool
+    var getStatus = errSecSuccess
+    var setStatuses: [OSStatus] = []
+    var applyFailedSet = false
+    var copyStatus = errSecSuccess
+    var item: CFTypeRef? = Data("fixture-keychain-data".utf8) as CFData
+    var events: [String] = []
+    var query: [String: Any]?
+
+    init(interactionAllowed: Bool = true) {
+        self.interactionAllowed = interactionAllowed
+    }
+
+    var client: ClaudeUsageKeychainClient {
+        ClaudeUsageKeychainClient(
+            getInteractionAllowed: { [self] allowed in
+                events.append("get")
+                allowed = interactionAllowed
+                return getStatus
+            },
+            setInteractionAllowed: { [self] allowed in
+                events.append("set:\(allowed)")
+                let status = setStatuses.isEmpty ? errSecSuccess : setStatuses.removeFirst()
+                if status == errSecSuccess || applyFailedSet { interactionAllowed = allowed }
+                return status
+            },
+            copyMatching: { [self] query, result in
+                events.append("copy:\(interactionAllowed)")
+                self.query = query as NSDictionary as? [String: Any]
+                result = item
+                return copyStatus
+            }
+        )
+    }
+}
 
 private final class ClaudeHTTPStub: URLProtocol, @unchecked Sendable {
     struct State: Sendable {
@@ -52,9 +93,143 @@ private struct ClaudeUsageProbeChecks {
         return try JSONSerialization.data(withJSONObject: ["claudeAiOauth": oauth])
     }
     static func main() async throws {
+        try keychainChecks()
         try parserChecks()
         try await transportChecks()
-        print("Claude usage parser/transport checks passed: \(checks)")
+        print("Claude usage Keychain/parser/transport checks passed: \(checks)")
+    }
+
+    static func keychainChecks() throws {
+        for original in [true, false] {
+            for allowInteraction in [false, true] {
+                let stub = ClaudeKeychainStub(interactionAllowed: original)
+                let data = try ClaudeUsageKeychain.read(allowInteraction: allowInteraction, client: stub.client)
+                try expect(data == Data("fixture-keychain-data".utf8), "A permitted read must return the fixture data")
+                try expect(stub.events == ["get", "set:\(allowInteraction)", "copy:\(allowInteraction)", "set:\(original)"]
+                           && stub.interactionAllowed == original,
+                           "The legacy UI gate must apply before reading and restore the exact previous state")
+                let context = stub.query?[kSecUseAuthenticationContext as String] as? LAContext
+                try expect(context?.interactionNotAllowed == !allowInteraction,
+                           "LocalAuthentication must enforce the same interaction policy as the legacy UI gate (requested: \(allowInteraction), observed: \(String(describing: context?.interactionNotAllowed)))")
+                try expect(stub.query?[kSecAttrService as String] as? String == "Claude Code-credentials"
+                           && stub.query?[kSecReturnData as String] as? Bool == true,
+                           "The guarded query must still request only the Claude Code credential data")
+            }
+        }
+
+        let failures: [(OSStatus, ClaudeUsageFailure)] = [
+            (errSecItemNotFound, .notSignedIn),
+            (errSecInteractionNotAllowed, .permissionRequired),
+            (errSecInteractionRequired, .permissionRequired),
+            (errSecAuthFailed, .permissionRequired),
+            (errSecUserCanceled, .permissionRequired),
+            (OSStatus(CSSMERR_CSP_NO_USER_INTERACTION), .permissionRequired),
+            (OSStatus(CSSMERR_CSP_IN_DARK_WAKE), .permissionRequired),
+            (errSecNotAvailable, .permissionRequired),
+            (errSecParam, .connection)
+        ]
+        for (status, failure) in failures {
+            let stub = ClaudeKeychainStub()
+            stub.copyStatus = status
+            try expectFailure(failure, "Keychain status \(status) must map to the actionable failure") {
+                _ = try ClaudeUsageKeychain.read(allowInteraction: false, client: stub.client)
+            }
+            try expect(stub.events == ["get", "set:false", "copy:false", "set:true"] && stub.interactionAllowed,
+                       "A failed Keychain read must restore the previous UI policy before returning")
+        }
+
+        for item: CFTypeRef? in [nil, "invalid fixture" as CFString] {
+            let stub = ClaudeKeychainStub()
+            stub.item = item
+            try expectFailure(.notSignedIn, "Missing or non-data Keychain results must not be usable credentials") {
+                _ = try ClaudeUsageKeychain.read(allowInteraction: false, client: stub.client)
+            }
+            try expect(stub.events == ["get", "set:false", "copy:false", "set:true"] && stub.interactionAllowed,
+                       "Invalid credential data must not leave the process interaction policy changed")
+        }
+
+        let failedGet = ClaudeKeychainStub()
+        failedGet.getStatus = errSecNotAvailable
+        try expectFailure(.permissionRequired, "An unknown original UI policy must fail closed") {
+            _ = try ClaudeUsageKeychain.read(allowInteraction: false, client: failedGet.client)
+        }
+        try expect(failedGet.events == ["get"] && failedGet.query == nil,
+                   "A failed UI policy lookup must neither change policy nor read credentials")
+
+        for allowInteraction in [false, true] {
+            let failedSet = ClaudeKeychainStub(interactionAllowed: !allowInteraction)
+            failedSet.setStatuses = [errSecNotAvailable]
+            failedSet.applyFailedSet = true
+            try expectFailure(.permissionRequired, "A failed UI policy change must fail closed") {
+                _ = try ClaudeUsageKeychain.read(allowInteraction: allowInteraction, client: failedSet.client)
+            }
+            try expect(failedSet.events == ["get", "set:\(allowInteraction)", "set:\(!allowInteraction)"]
+                       && failedSet.query == nil && failedSet.interactionAllowed == !allowInteraction,
+                       "A failed UI policy change must restore even a partially changed policy without reading credentials")
+        }
+
+        let failedRestore = ClaudeKeychainStub()
+        failedRestore.setStatuses = [errSecSuccess, errSecNotAvailable]
+        try expectFailure(.permissionRequired, "A failed UI policy restoration must not return credential data") {
+            _ = try ClaudeUsageKeychain.read(allowInteraction: false, client: failedRestore.client)
+        }
+        try expect(failedRestore.events == ["get", "set:false", "copy:false", "set:true"],
+                   "A successful credential read must still attempt restoration before reporting a policy failure")
+
+        try concurrentKeychainChecks()
+    }
+
+    static func concurrentKeychainChecks() throws {
+        struct State {
+            var allowed = false
+            var activeReads = 0
+            var maximumActiveReads = 0
+            var successfulReads = 0
+            var policyMismatch = false
+        }
+        let shared = OSAllocatedUnfairLock(initialState: State())
+        let fixture = Data("concurrent-fixture".utf8)
+        DispatchQueue.concurrentPerform(iterations: 24) { index in
+            let allowInteraction = index.isMultiple(of: 2)
+            var settingCalls = 0
+            let client = ClaudeUsageKeychainClient(
+                getInteractionAllowed: { allowed in
+                    allowed = shared.withLock {
+                        $0.activeReads += 1
+                        $0.maximumActiveReads = max($0.maximumActiveReads, $0.activeReads)
+                        return $0.allowed
+                    }
+                    return errSecSuccess
+                },
+                setInteractionAllowed: { allowed in
+                    settingCalls += 1
+                    let restoring = settingCalls == 2
+                    shared.withLock {
+                        $0.allowed = allowed
+                        if restoring { $0.activeReads -= 1 }
+                    }
+                    // Give an unguarded concurrent caller time to change the
+                    // process-wide policy between setting it and reading.
+                    if settingCalls == 1 { Thread.sleep(forTimeInterval: 0.001) }
+                    return errSecSuccess
+                },
+                copyMatching: { _, result in
+                    shared.withLock {
+                        if $0.allowed != allowInteraction { $0.policyMismatch = true }
+                    }
+                    result = fixture as CFData
+                    return errSecSuccess
+                }
+            )
+            if (try? ClaudeUsageKeychain.read(allowInteraction: allowInteraction, client: client)) == fixture {
+                shared.withLock { $0.successfulReads += 1 }
+            }
+        }
+        let result = shared.withLock { $0 }
+        try expect(result.successfulReads == 24 && result.maximumActiveReads == 1 && result.activeReads == 0,
+                   "Concurrent Connect and background reads must serialize the complete policy/read/restore operation")
+        try expect(!result.policyMismatch && !result.allowed,
+                   "An interactive read must never enable UI for a concurrent background read or change the original policy")
     }
     static func parserChecks() throws {
         let value = try ClaudeUsageParser.snapshot(payload, account: account, at: date)

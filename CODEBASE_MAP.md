@@ -560,6 +560,10 @@ bash scripts/check-weather.sh /path/to/DerivedData/Build/Products/Debug
 
 本節只核對 `8f9b524` 之後本次未提交的 Claude／AI Usage／XPC 修改，沒有重新審查其餘模組。
 
+2026-10-21 局部更新：以 `c3d8c36` 加本次未提交變更核對 Keychain 背景互動控制與相關回歸測試；其餘部分沿用本節原先的驗證範圍。
+
+2026-10-22 局部更新：另核對本機固定簽署設定。App／helper 的 Debug／Release 均由 [LocalBuild.xcconfig](Configuration/LocalBuild.xcconfig) 載入預設值與 Git 忽略的 `Configuration/LocalSigning.xcconfig`；[setup-local-signing.py](scripts/setup-local-signing.py) 建立／重用 login Keychain 中專用的本機簽署身分，以不同程式內容驗證相同憑證與 identifier 可保留相同 designated requirement，再保存公開指紋。私鑰不進入 repo，腳本不修改系統信任或 Claude ACL。保留此身分才能讓「永遠允許」跨建置延續；操作及首次授權見 [打包紀錄第 7 節](APP_PACKAGING_NOTES.md#7-本機固定簽署身分與-claude-keychain-授權)。
+
 | 修改內容 | 定位與行為 |
 |---|---|
 | 入口與介面 | [AIUsageView.swift](boringNotch/components/Usage/AIUsageView.swift)：`AIUsageProvider`／`AIUsageProviderPicker`；`@AppStorage("aiUsageProvider")` 保存 Codex／Claude 選擇。`NotchViews.codexUsage` 保留原 case，`ContentView` 改接共用入口，頂層 tab 仍為 AI Usage。provider 選擇器與 Codex 的 Remaining／Last 7 days 同一列 |
@@ -567,7 +571,7 @@ bash scripts/check-weather.sh /path/to/DerivedData/Build/Products/Debug
 | 資料與錯誤模型 | [ClaudeUsageModels.swift](boringNotch/models/ClaudeUsageModels.swift)：app／helper 共用 `ClaudeUsageRequest`、`ClaudeUsageResult`、`ClaudeUsageSnapshot`。XPC 與快取只包含 SHA-256 憑證指紋、方案、額度與固定錯誤類別；沒有 access token／refresh token／原始伺服器內容 |
 | XPC 邊界 | [ClaudeUsageService.swift](boringNotch/Providers/ClaudeUsageService.swift) → [XPCHelperClient.swift](boringNotch/XPCHelperClient/XPCHelperClient.swift) 的 `fetchClaudeUsage` → [BoringNotchXPCHelper.swift](BoringNotchXPCHelper/BoringNotchXPCHelper.swift)。兩份 `BoringNotchXPCHelperProtocol.swift` 必須同步；新增 shared models 的兩個 target membership 在 `project.pbxproj`，helper 其餘檔案由 synchronized group 納入 |
 | XPC 登入工作階段 | [Info.plist](BoringNotchXPCHelper/Info.plist) 的 `XPCService.JoinExistingSession = true` 讓 helper 加入呼叫 App 的 security session，以存取登入鑰匙圈。缺少此設定時，完整 App 內的 Connect 會立即收到 `CSSMERR_CSP_NO_USER_INTERACTION`，即使允許互動仍無法顯示授權提示；獨立 Probe／anonymous XPC 測試不會涵蓋這個 launchd 啟動條件。依據 [Apple XPC 設定文件](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingXPCServices.html) |
-| 登入與 HTTP | [ClaudeUsageProbe.swift](BoringNotchXPCHelper/ClaudeUsageProbe.swift)：只讀取 Keychain 的 `Claude Code-credentials`；背景讀取使用 `LAContext.interactionNotAllowed`，只有明確點 Connect 才可顯示 macOS 授權提示。用既有 OAuth token 對固定 `https://api.anthropic.com/api/oauth/usage` GET，設定 `anthropic-beta: oauth-2025-04-20` 與本 App User-Agent。拒絕 redirect、停用 cookies／URL cache、20 秒 request／25 秒 resource timeout、stream 最多 1 MiB，同參數並行請求合併 |
+| 登入與 HTTP | [ClaudeUsageProbe.swift](BoringNotchXPCHelper/ClaudeUsageProbe.swift)：只讀取 Keychain 的 `Claude Code-credentials`；`ClaudeUsageKeychain.read` 將讀取序列化，在同步查詢期間以 `SecKeychainSetUserInteractionAllowed(false)` 關閉傳統 login Keychain 的授權提示，同時保留 `LAContext.interactionNotAllowed`。只有明確點 Connect 才可開啟互動；查詢成功或失敗都先恢復原狀態，無法設定互動控制時不讀取憑證。`ClaudeUsageKeychainClient` 提供可注入的系統 API 邊界，legacy API 的棄用警告僅在 Swift 6.4+ 的 live adapter 內局部豁免。用既有 OAuth token 對固定 `https://api.anthropic.com/api/oauth/usage` GET，設定 `anthropic-beta: oauth-2025-04-20` 與本 App User-Agent。拒絕 redirect、停用 cookies／URL cache、20 秒 request／25 秒 resource timeout、stream 最多 1 MiB，同參數並行請求合併 |
 | 解析 | [ClaudeUsageParser.swift](BoringNotchXPCHelper/ClaudeUsageParser.swift)：`credential` 驗證 expiresAt／profile scope 並產生指紋；`snapshot` 只解析已知 window key、容許 null、不把未知值當零，支援有／無小數秒 ISO 日期。額度／日期型別錯誤明確失敗；401、403、429、5xx 有獨立狀態，Retry-After 支援秒數及 HTTP 日期 |
 | 排程與快取 | [ClaudeUsageManager.swift](boringNotch/managers/ClaudeUsageManager.swift)：共用 300 秒 HTTP 門檻，呼叫前先持久化，手動／喚醒／切頁／重啟不能繞過。先做不連網的 identity check 才顯示快取；指紋改變即丟棄舊資料。限流依 10／20／30 分鐘退避，尊重更長 Retry-After。資料 30 分鐘過期，限流與 pending request 期間也會清除；stop 後晚到回覆不可更新 UI。`ClaudeUsageFileStore` 保存 `Application Support/boringNotch/ClaudeUsage.json`，atomic write、0600 權限，保存失敗有提示 |
 | 啟停 | [boringNotchApp.swift](boringNotch/boringNotchApp.swift)：AppDelegate 啟動、終止與喚醒接上 `ClaudeUsageManager`，provider 切換沿用同一查詢門檻 |
@@ -579,12 +583,16 @@ bash scripts/check-weather.sh /path/to/DerivedData/Build/Products/Debug
 ### 驗證與後續修改入口
 
 - Xcode Debug build 通過，無 Swift／linker warning，保留既有 AppIntents metadata 提示。
-- [ClaudeUsageProbeChecks.swift](Tests/ClaudeUsageProbeChecks.swift)：53 項離線 parser／HTTP transport 檢查，涵蓋百分比、null、兩種日期、無效／超量回應、登入期限／scope、secret 不外洩、固定 endpoint／headers、identity 不連網、錯誤與 timeout、Retry-After、並行合併和 redirect 拒絕。
+- [ClaudeUsageProbeChecks.swift](Tests/ClaudeUsageProbeChecks.swift)：原有 53 項離線 parser／HTTP transport 檢查，涵蓋百分比、null、兩種日期、無效／超量回應、登入期限／scope、secret 不外洩、固定 endpoint／headers、identity 不連網、錯誤與 timeout、Retry-After、並行合併和 redirect 拒絕。2026-10-21 增加 48 項 Keychain 控制檢查，總計 101 項通過：背景／Connect 實際傳給系統的互動開關、原狀態復原、get/set/restore 失敗、legacy 錯誤映射，以及 24 個混合並行讀取。使用注入假資料，不讀取真實憑證；`LAContext` 屬性核對需要可連接系統 LocalAuthentication 服務的執行環境。
 - [ClaudeUsageRegressionChecks.swift](Tests/ClaudeUsageRegressionChecks.swift)：34 項 manager／cache 檢查，涵蓋虛擬時鐘背景排程、點擊合併、重啟、Keychain prompt 旗標、帳號／憑證變更、手動 reconnect 不繞過冷卻、長限流、pending 到期／取消、快取毀損／版本／0600 權限／寫入失敗。
-- [check-claude-usage.sh](scripts/check-claude-usage.sh) 額外檢查編譯後 App 內嵌 helper 的 `JoinExistingSession` 布林值；已確認舊產物會失敗，修正後重新建置的產物通過，並重跑上述 87 項檢查。
+- [check-claude-usage.sh](scripts/check-claude-usage.sh) 額外檢查編譯後 App 內嵌 helper 的 `JoinExistingSession` 布林值；已確認舊產物會失敗，修正後重新建置的產物通過。當時通過 87 項；2026-10-21 加入 Keychain 控制檢查後共 135 項通過。
 - Codex 43 項 probe + 45 項 manager／history 回歸檢查通過；並行／月曆／真實 anonymous XPC 共 66 項通過，其中新加入 Claude usage、identity-only 和 permission failure 的 Data 往返。
 - 真實 Swift Probe 使用既有 Claude Code Pro 登入成功讀到兩個 window 與重設時間。修正 helper 的 security session 後，另以 Xcode 的 Release Run 重新建置並重啟完整 App，實際點擊 `AI Usage → Claude → Connect Claude Code`，確認 helper 收到 HTTP 200，頁面顯示 Pro、5 小時／每週剩餘比例與重設時間；無須重新登入。僅檢查方案及額度，不印出憑證，未用真實 API 做大量限流測試。
 - UI 以實際 App module 的 Claude／Codex views、離線資料與 NSHostingView 檢查，共 10 種配置（Claude 正常／Keychain 授權／登入過期／限流的兩種寬度，加 Codex Remaining／History）。Claude 的 footer 合併為單列，576／496 pt 內容寬、130 pt 高均能完整顯示兩個額度與重設時間。離屏截圖個別原生控制項偶爾省略圖層；完整 App 已完成上述 Claude 真實查詢與畫面操作，尚未測試 macOS 14／Intel。
+- 2026-10-21 防背景彈窗修正：Debug／簽署 Release 建置與簽章驗證通過，無 Swift／linker warning；Claude 101 + 34、Codex 43 + 45、並行 66 與音訊 listener 52 項檢查通過。另以真實 Security get/set 與假資料 lookup 驗證 12 組成功／失敗／背景／Connect 狀態，確認開關跨執行緒生效且原值恢復；未讀取測試憑證或修改 Keychain ACL。23:54 安裝至 `/Applications/Boring Notch.app` 並重啟 App／helper，舊版保留於 Downloads 的 `Boring Notch before keychain fix 2026-10-21.app`。建置、測試與安裝紀錄在 `/tmp/boring-notch-keychain-fix/`。
+- 2026-10-22 固定簽署安裝前核對：當時的 ad-hoc helper 在 10/21 23:53:59 啟動讀取及 23:59:00 五分鐘更新時，均直接收到 ACL 拒絕，沒有原版的 `displaying keychain prompt`／授權 UI 事件。另以相同 production reader 執行一次強制非互動讀取，確認回傳 `errSecAuthFailed (-25293)` 並映射為 `.permissionRequired`；只輸出狀態，未輸出憑證或修改 ACL。這驗證缺乏新版本授權時會靜默失敗；後續已改用固定簽署並完成下述首次授權。
+- 2026-10-22 固定簽署安裝與首次用量：00:24 已安裝並啟動 `/Applications/Boring Notch.app`（App PID `47712`／helper PID `47727`）。00:25:00.731（Asia/Taipei）的 `securityd` 紀錄確認使用者對安裝版 helper 選擇 `always allow`；00:25:00.750 的後續非互動讀取為 LAContext `1000 = 1`，00:25:01.405 收到 HTTP 200，首次用量查詢成功。後續建置須保留本機 `LocalSigning.xcconfig` 與同一 Keychain 簽署身分，避免回退 ad-hoc；建置／測試／安裝證據位於 `/tmp/boring-notch-persistent-signing/`，操作見 [打包紀錄第 7 節](APP_PACKAGING_NOTES.md#7-本機固定簽署身分與-claude-keychain-授權)。
+- 2026-10-22 授權後重啟與定時輪詢：00:28:28 完成重啟，App PID `47712 → 47870`、helper PID `47727 → 47882`。新 helper 在 00:28:27.977 非互動確認啟動身分（LAContext `1000 = 1`）；00:30:02.408 原本的五分鐘背景輪詢也以非互動方式讀取，00:30:03.076 收到 HTTP 200。從此次重啟至輪詢完成，未見 Keychain prompt、再次授權或存取拒絕事件，已完成重啟與五分鐘背景更新驗證。尚未長時間觀察，亦未驗證睡眠喚醒、credential 項目重建或 Intel／macOS 14。
 
 ```sh
 # 先完成 Debug build；以下都是離線 fixture，不讀取真實 Claude 憑證。

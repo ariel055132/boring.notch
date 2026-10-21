@@ -43,6 +43,8 @@ build/
 *.idea/
 
 # User-specific files
+/Configuration/LocalSigning.xcconfig
+/Configuration/LocalSigning.lock
 *.xcuserdatad/
 *.xcscheme
 *.xcodeproj/xcuserdata
