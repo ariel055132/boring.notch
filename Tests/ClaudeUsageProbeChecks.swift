@@ -125,6 +125,7 @@ private struct ClaudeUsageProbeChecks {
             (errSecUserCanceled, .permissionRequired),
             (OSStatus(CSSMERR_CSP_NO_USER_INTERACTION), .permissionRequired),
             (OSStatus(CSSMERR_CSP_IN_DARK_WAKE), .permissionRequired),
+            (OSStatus(CSSMERR_CSP_OPERATION_AUTH_DENIED), .permissionRequired),
             (errSecNotAvailable, .permissionRequired),
             (errSecParam, .connection)
         ]

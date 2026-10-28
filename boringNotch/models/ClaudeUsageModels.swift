@@ -2,7 +2,9 @@ import Foundation
 
 struct ClaudeUsageRequest: Codable, Hashable, Sendable {
     var usage = false
-    // Only an explicit Connect action may show a macOS Keychain prompt.
+    // Only explicit Connect may request new Keychain authorization. Background
+    // CLI fallback requires existing access; its preflight is not atomic with a
+    // subsequent external Keychain lock or ACL change.
     var allowKeychainPrompt = false
 }
 
@@ -78,7 +80,7 @@ enum ClaudeUsageFailure: String, Codable, Error, Sendable, LocalizedError {
         case .notSignedIn:
             String(localized: "Sign in to Claude Code with your Claude subscription, then connect.")
         case .permissionRequired:
-            String(localized: "Connect, then choose “Always Allow” in macOS Keychain to keep Claude usage updating automatically.")
+            String(localized: "Unlock your login keychain, or connect to allow Claude usage access through the macOS security tool.")
         case .expiredLogin:
             String(localized: "Run /usage in Claude Code to refresh your sign-in, then reconnect here.")
         case .unsupportedAccount:

@@ -32,6 +32,37 @@ enum ClaudeUsageKeychain {
 
     static func read(allowInteraction: Bool,
                      client: ClaudeUsageKeychainClient = .live) throws -> Data {
+        try withInteraction(allowInteraction, client: client) {
+            let context = LAContext()
+            context.interactionNotAllowed = !allowInteraction
+            context.localizedReason = String(localized: "Read your Claude subscription usage")
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: "Claude Code-credentials",
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne,
+                kSecUseAuthenticationContext as String: context
+            ]
+            var item: CFTypeRef?
+            let status = client.copyMatching(query as CFDictionary, &item)
+            switch status {
+            case errSecSuccess:
+                guard let data = item as? Data else { throw ClaudeUsageFailure.notSignedIn }
+                return data
+            case errSecItemNotFound: throw ClaudeUsageFailure.notSignedIn
+            case errSecInteractionNotAllowed, errSecInteractionRequired,
+                 errSecAuthFailed, errSecUserCanceled, errSecNotAvailable,
+                 OSStatus(CSSMERR_CSP_NO_USER_INTERACTION), OSStatus(CSSMERR_CSP_IN_DARK_WAKE),
+                 OSStatus(CSSMERR_CSP_OPERATION_AUTH_DENIED):
+                throw ClaudeUsageFailure.permissionRequired
+            default: throw ClaudeUsageFailure.connection
+            }
+        }
+    }
+
+    static func withInteraction<T>(_ allowInteraction: Bool,
+                                   client: ClaudeUsageKeychainClient = .live,
+                                   operation: () throws -> T) throws -> T {
         interactionLock.lock()
         defer { interactionLock.unlock() }
 
@@ -44,33 +75,13 @@ enum ClaudeUsageKeychain {
             throw ClaudeUsageFailure.permissionRequired
         }
 
-        let context = LAContext()
-        context.interactionNotAllowed = !allowInteraction
-        context.localizedReason = String(localized: "Read your Claude subscription usage")
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationContext as String: context
-        ]
-        var item: CFTypeRef?
-        let status = client.copyMatching(query as CFDictionary, &item)
-        // Restore before interpreting the result, including every failure path.
+        let result = Result { try operation() }
+        // Metadata preflight and native reads share the same policy/lock scope.
+        // Restore before returning either success or failure.
         guard client.setInteractionAllowed(previousInteraction) == errSecSuccess else {
             throw ClaudeUsageFailure.permissionRequired
         }
-        switch status {
-        case errSecSuccess:
-            guard let data = item as? Data else { throw ClaudeUsageFailure.notSignedIn }
-            return data
-        case errSecItemNotFound: throw ClaudeUsageFailure.notSignedIn
-        case errSecInteractionNotAllowed, errSecInteractionRequired,
-             errSecAuthFailed, errSecUserCanceled, errSecNotAvailable,
-             OSStatus(CSSMERR_CSP_NO_USER_INTERACTION), OSStatus(CSSMERR_CSP_IN_DARK_WAKE):
-            throw ClaudeUsageFailure.permissionRequired
-        default: throw ClaudeUsageFailure.connection
-        }
+        return try result.get()
     }
 }
 
@@ -89,12 +100,12 @@ actor ClaudeUsageProbe {
     static let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
 
     private let session: URLSession
-    private let readCredential: @Sendable (Bool) throws -> Data
+    private let readCredential: @Sendable (Bool) async throws -> Data
     private let now: @Sendable () -> Date
     private var pending: [ClaudeUsageRequest: Task<ClaudeUsageResult, Never>] = [:]
 
     init(session: URLSession? = nil,
-         readCredential: @escaping @Sendable (Bool) throws -> Data = { try ClaudeUsageKeychain.read(allowInteraction: $0) },
+         readCredential: @escaping @Sendable (Bool) async throws -> Data = { try await ClaudeUsageCredentialReader.read(allowInteraction: $0) },
          now: @escaping @Sendable () -> Date = { Date() }) {
         if let session { self.session = session }
         else {
@@ -122,7 +133,7 @@ actor ClaudeUsageProbe {
     private func query(_ request: ClaudeUsageRequest) async -> ClaudeUsageResult {
         var account: ClaudeUsageAccount?
         do {
-            let credential = try ClaudeUsageParser.credential(readCredential(request.allowKeychainPrompt), at: now())
+            let credential = try ClaudeUsageParser.credential(await readCredential(request.allowKeychainPrompt), at: now())
             account = credential.account
             guard request.usage else { return .init(account: account) }
             var query = URLRequest(url: Self.endpoint)
