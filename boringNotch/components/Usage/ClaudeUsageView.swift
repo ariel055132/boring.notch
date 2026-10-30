@@ -124,16 +124,25 @@ struct ClaudeUsageView: View {
                 Text("Checking your Claude usage…").font(.system(size: 11))
             } else {
                 Text(manager.failure?.localizedDescription ?? String(localized: "See the remaining usage for your Claude subscription."))
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(manager.failure == .expiredLogin ? Color.orange : Color.secondary)
                     .multilineTextAlignment(.center).lineLimit(3)
                 HStack(spacing: 12) {
                     dashboardLink
                     if manager.failure?.needsConnection == true || manager.account == nil {
-                        Button("Connect Claude Code", action: manager.connect).buttonStyle(.borderless)
+                        Button(action: manager.connect) {
+                            if manager.failure == .expiredLogin { Text("Retry connection") }
+                            else { Text("Connect Claude Code") }
+                        }
+                        .buttonStyle(.borderless)
                     } else { refreshButton }
                 }
                 .font(.system(size: 11))
-                if let next = manager.nextRefreshAt, manager.failure?.needsConnection != true {
+                if manager.failure == .expiredLogin {
+                    Text("Retry checks your existing sign-in. Renew it in Claude Code first.")
+                        .font(.system(size: 9)).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                } else if let next = manager.nextRefreshAt, manager.failure?.needsConnection != true {
                     Text("Next check \(next.formatted(date: .omitted, time: .shortened))")
                         .font(.system(size: 9)).foregroundStyle(.secondary).help(next.formatted())
                 } else {

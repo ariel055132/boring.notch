@@ -201,3 +201,42 @@ Debug／Release 建置、Claude 135 項、Codex 88 項、並行 66 項及音訊 
 00:28:28 完成授權後重啟，App PID 由 `47712` 變為 `47870`，helper PID 由 `47727` 變為 `47882`。新 helper 在 00:28:27.977 執行非互動啟動身分確認（LAContext `1000 = 1`）；00:30:02.408 原本的五分鐘背景輪詢再次非互動讀取，00:30:03.076 收到 HTTP 200。從此次重啟到該次輪詢完成，系統紀錄沒有 Keychain prompt、再次授權或存取拒絕事件，已完成重啟與五分鐘定時背景更新驗證；此結果不代表已驗證長時間運作、睡眠喚醒或 credential 項目重建。
 
 本次建置、測試與安裝紀錄位於 `/tmp/boring-notch-persistent-signing/`。午夜後原 `/tmp` 套件 checkout 檔案不完整，已逐一核對 12 組 `Package.resolved` revision，改用 Xcode 既有且 revision 相同的 SourcePackages；未更新依賴版本。
+
+## 8. Claude token 輪替後的 Keychain 讀取修復
+
+2026-10-29 核對發現，第 7 節的固定簽章保留了普通 trusted-app 授權，但沒有處理 partition ACL。當時安裝版仍使用同一簽署憑證，10/26 日誌也記錄使用者選過 Always Allow；10/29 的 securityd 卻明確回報 `ACL partition mismatch`，允許的 partition 只有 `apple-tool:`。Keychain 本身已解鎖，helper 亦仍在普通信任清單。
+
+本機 Claude Code 2.1.308 使用 `/usr/bin/security add-generic-password -U` 更新登入資料。Apple 的 [ItemImpl::updateSSGroup](https://github.com/apple-oss-distributions/Security/blob/main/OSX/libsecurity_keychain/lib/Item.cpp) 會在更新密碼資料時複製一般 ACL、重建 partition／integrity；[clientid.cpp](https://github.com/apple-oss-distributions/Security/blob/main/securityd/src/clientid.cpp) 特別把 `com.apple.security` 分為 `apple-tool:`。因此只重加 helper 授權或沿用自簽憑證，無法避免下一次輪替又失效。一次性 JXA／其他 Apple 工具也不是同一個 partition。
+
+修復由 `ClaudeUsageCredentialReader` 先做原生 no-UI 讀取；只在權限拒絕時，透過 `ClaudeUsageSecurityPreflight` 核對唯一項目、實際 account／keychain 路徑、解鎖／可讀狀態、系統工具的 decrypt 授權與 `apple-tool:` partition，再執行固定的 `/usr/bin/security find-generic-password`。沒有修改 Claude credential、ACL、token refresh 流程或 Claude Code 設定。五分鐘更新、HTTP 冷卻、帳號指紋和快取期限沿用原設定。Connect 的文字改為解鎖／允許系統工具讀取，移除「Always Allow 就能永遠更新」的承諾。
+
+背景前置檢查不通過就不執行系統工具；明確 Connect 才允許請求新授權。**限制：`security` CLI 沒有禁止 UI 的旗標，metadata 檢查與實際讀取之間仍有競爭條件。若外部在這個間隔鎖定 Keychain 或改變 ACL，仍可能出現系統提示；不能把這次修復描述成絕不彈窗。** 原生 API 路徑仍強制停用互動。系統工具的 stdout 僅透過匿名 pipe 交回 helper，stderr 丟棄，原始 token 不寫檔、不記錄、不經 XPC 傳入主 App；讀取受輸出上限、逾時和取消控制。
+
+Debug／Release 建置、241 項 Claude 檢查、66 項並行／XPC 檢查及 52 項音訊 listener 檢查通過。新增 opt-in 真實 Keychain 整合測試：
+
+```sh
+python3 scripts/check-claude-keychain-rotation.py --run
+```
+
+測試只使用 UUID 專用臨時鑰匙圈與假資料，重現「一般授權保留、partition 重設、native -25293、系統工具讀到新值」，並核對鎖定／解鎖與清理。放在 `/tmp` 的鑰匙圈不會啟用同樣的 partition 保護，不能代替這項回歸。真實 production reader 亦已在現有 Claude 項目通過 preflight、credential read 和 parser 驗證，未要求再次授權。建置及安裝紀錄位於 `/tmp/boring-notch-claude-refresh-fix/`。
+
+修正版已替換 `/Applications/Boring Notch.app` 並重啟（App PID `69509`、helper PID `69526`），保留同一固定簽署身分；安裝前後 `codesign --verify --deep --strict` 通過，安裝 helper 的 SHA-256 與 Release 產物一致。安裝時舊版曾暫存於 `/tmp/boring-notch-claude-refresh-fix/Boring Notch before Claude refresh fix.app`，後續依使用者要求移到垃圾桶，見第 9 節。安裝版在 00:54:54.124 成功收到 HTTP 200，下一次五分鐘背景更新在 00:59:54.440 再次收到 HTTP 200；這段觀察期間沒有 Keychain prompt 紀錄，未要求使用者再次 Connect。此為真實重啟／連續排程驗證，加上上述假憑證輪替回歸；不代表消除了前置檢查競爭條件，也未代替 Claude Code 執行 OAuth 續期。
+
+## 9. 修正分支、安裝包與舊版清理
+
+2026-10-29 將這次程式碼、測試與說明保存在 `codex/fix-claude-usage-token-rotation` 分支。完整變更摘要見 [CLAUDE_USAGE_FIX_2026-10-29.md](CLAUDE_USAGE_FIX_2026-10-29.md)。這次只提交並推送修正分支，不合併 `main`。
+
+- 現用 App：`/Applications/Boring Notch.app`。
+- 安裝包：`~/Downloads/Boring Notch - Claude Usage Fix 2026-10-29.zip`，以 `ditto --sequesterRsrc --keepParent` 保存 App bundle；解壓後再次通過 deep／strict 簽章驗證，主程式及 helper 的 SHA-256 與現用 App 相同。
+- ZIP 大小：8,684,321 bytes；SHA-256：`a948d8c6dcea319f797f31a7eaf1214b3b5feff706b27710aafe7a4e7c82d10c`。
+- Helper SHA-256：`de578dda664eb499ca686e3d02a2fa13b16e814163b10bae45111bc7a8cfb997`。
+- 版本沿用 `2.7.3`／build `271`；使用本機固定簽章，不是 Apple 公證公開發行包。二進位產物、ZIP 及個人簽署設定不加入 Git。
+
+依使用者要求，已核對 bundle identifier、helper hash 後，將以下兩份舊版透過 macOS Trash API 移到垃圾桶，沒有清空垃圾桶：
+
+| 舊版原位置 | 處理結果 |
+|---|---|
+| `/tmp/boring-notch-claude-refresh-fix/Boring Notch before Claude refresh fix.app` | 已移至 `~/.Trash/Boring Notch before Claude refresh fix.app`。 |
+| `~/Library/Developer/Xcode/DerivedData/boringNotch-gkjxymzqfwilkwdxpsxyhoaplgpd/Build/Products/Release/Boring Notch.app` | 10/12 舊產物，已移至 `~/.Trash/Boring Notch.app`。 |
+
+盤點範圍為 Applications、Downloads、Desktop、指定的 `boring-notch*` 暫存目錄及專案建置目錄；未找到其他舊版安裝包。現用最新版、本次 Release／Debug 建置與最新 ZIP 保留，使用者設定及資料沒有刪除。包裝／清理紀錄在 `/tmp/boring-notch-claude-refresh-fix/package.json` 與 `cleanup.json`。

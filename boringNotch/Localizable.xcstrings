@@ -18280,7 +18280,10 @@
         }
       }
     },
-    "Run /usage in Claude Code to refresh your sign-in, then reconnect here." : {
+    "Retry checks your existing sign-in. Renew it in Claude Code first." : {
+
+    },
+    "Retry connection" : {
 
     },
     "Running" : {
@@ -23822,6 +23825,9 @@
           }
         }
       }
+    },
+    "Your Claude Code sign-in has expired. Run /usage in Claude Code, then click Retry connection." : {
+
     },
     "Your location is unavailable. Check Location Services and try again." : {
 
