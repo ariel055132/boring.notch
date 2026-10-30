@@ -82,7 +82,7 @@ enum ClaudeUsageFailure: String, Codable, Error, Sendable, LocalizedError {
         case .permissionRequired:
             String(localized: "Unlock your login keychain, or connect to allow Claude usage access through the macOS security tool.")
         case .expiredLogin:
-            String(localized: "Run /usage in Claude Code to refresh your sign-in, then reconnect here.")
+            String(localized: "Your Claude Code sign-in has expired. Run /usage in Claude Code, then click Retry connection.")
         case .unsupportedAccount:
             String(localized: "Sign in to Claude Code with a Claude subscription to see your plan's usage.")
         case .timedOut:
