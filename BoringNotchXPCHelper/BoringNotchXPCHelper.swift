@@ -13,6 +13,23 @@ import CoreGraphics
 import os
 
 class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
+    func fetchDeviceBatteries(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void) {
+        Task {
+            guard request.count <= 4096,
+                  let query = try? JSONDecoder().decode(DeviceBatteryRequest.self, from: request) else {
+                reply(nil, DeviceBatterySourceState.invalidResponse.rawValue)
+                return
+            }
+            let result = await DeviceBatteryProbe.shared.fetch(query)
+            reply(try? JSONEncoder().encode(result), nil)
+        }
+    }
+
+    func cancelDeviceBatteryRequest(_ id: String) {
+        guard let id = UUID(uuidString: id) else { return }
+        Task { await DeviceBatteryProbe.shared.cancel(id) }
+    }
+
     func fetchClaudeUsage(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void) {
         Task {
             guard let query = try? JSONDecoder().decode(ClaudeUsageRequest.self, from: request) else {

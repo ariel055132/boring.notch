@@ -1,0 +1,111 @@
+classDiagram
+    direction TB
+
+    class ContentView {
+        <<struct>>
+        原有分頁內容
+        preventAutoClose
+    }
+    class BoringHeader {
+        <<struct>>
+        showDeviceBatteries
+        Settings 左側顯示 AirPods
+    }
+    class DeviceBatteryIndicator {
+        <<struct>>
+        devices
+        selectedID
+        showPopover
+    }
+    class DeviceBatteryPopover {
+        <<struct>>
+        device
+        顯示各部件與資料狀態
+    }
+    class BoringViewModel {
+        <<class>>
+        notchSize
+        isDeviceBatteryPopoverActive
+    }
+    class AppDelegate {
+        <<class>>
+        applicationDidFinishLaunching()
+        applicationWillTerminate()
+        更新設定與睡眠狀態
+    }
+    class DeviceBatteryManager {
+        <<class>>
+        devices
+        sourceStates
+        startBackgroundUpdates()
+        stopBackgroundUpdates()
+        refreshIfNeeded()
+    }
+    class DeviceBatterySnapshot {
+        <<struct>>
+        id
+        name
+        kind
+        connectionState
+        components
+        compactReading
+    }
+    class BatteryComponentReading {
+        <<struct>>
+        component
+        percent
+        chargingState
+        readAt
+        sourceUpdatedAt
+        provenance
+    }
+    class XPCHelperClient {
+        <<class>>
+        fetchDeviceBatteries(request)
+        cancelDeviceBatteryRequest(id)
+    }
+    class BoringNotchXPCHelper {
+        <<class>>
+        fetchDeviceBatteries(request, reply)
+        cancelDeviceBatteryRequest(id)
+    }
+    class DeviceBatteryProbe {
+        <<actor>>
+        fetch(request)
+        cancel(id)
+        合併查詢與取消工作
+    }
+    class AirPodsBatteryReader {
+        <<struct>>
+        read()
+        parseSystemReport(data)
+    }
+
+
+    ContentView --> BoringHeader : 展開時顯示
+    BoringHeader --> DeviceBatteryIndicator : Settings 左側
+    ContentView --> BoringViewModel : 開合與阻止自動收合
+    DeviceBatteryIndicator --> DeviceBatteryPopover : 點擊裝置
+    DeviceBatteryIndicator --> DeviceBatteryManager : 觀察共用狀態
+    DeviceBatteryIndicator --> BoringViewModel : 管理本視窗 popover
+    DeviceBatteryPopover --> DeviceBatterySnapshot : 唯讀呈現
+    AppDelegate --> DeviceBatteryManager : 啟停與睡眠喚醒
+    DeviceBatteryManager --> XPCHelperClient : 注入非同步讀取操作
+    DeviceBatteryManager "1" o-- "0..*" DeviceBatterySnapshot : 發布與判斷過期
+    DeviceBatterySnapshot "1" *-- "0..*" BatteryComponentReading : 各部件獨立電量
+    XPCHelperClient ..> BoringNotchXPCHelper : 既有 XPC protocol 新增方法
+    BoringNotchXPCHelper --> DeviceBatteryProbe : 呼叫共用 actor
+    DeviceBatteryProbe --> AirPodsBatteryReader : 系統藍牙報告
+    AirPodsBatteryReader ..> DeviceBatterySnapshot : 產生
+
+    note for ContentView "修改：移除底部摘要，恢復原高度"
+    note for BoringHeader "修改：AirPods 圖示與百分比放在 Settings 左邊"
+    note for DeviceBatteryIndicator "修改：由底部列改為緊湊按鈕，沿用 Mac 電池點擊樣式"
+    note for BoringViewModel "保留：popover 狀態；移除動態高度更新"
+    note for AppDelegate "修改：沿用現有 App 與視窗生命週期"
+    note for XPCHelperClient "修改：沿用 MainActor client 與現有連線"
+    note for BoringNotchXPCHelper "修改：沿用現有非 sandbox helper"
+    note for DeviceBatteryManager "既有：MainActor；全 App 一份，與視窗數量無關"
+    note for DeviceBatteryProbe "既有：有期限的共用工作；依 request ID 取消"
+    note for AirPodsBatteryReader "既有：system_profiler JSON；不主動連接耳機"
+    note for BatteryComponentReading "既有：optional 百分比；查詢時間不等於裝置回報時間"

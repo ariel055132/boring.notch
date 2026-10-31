@@ -13,6 +13,8 @@ final class XPCHelperClient: NSObject {
     private var connection: NSXPCConnection?
     private var lastKnownAuthorization: Bool?
     private var monitoringTask: Task<Void, Never>?
+    private var deviceBatteryReplies: [UUID: CheckedContinuation<DeviceBatteryResult, Error>] = [:]
+    private var deviceBatteryDeadlines: [UUID: Task<Void, Never>] = [:]
 
     override convenience init() {
         self.init(connectionFactory: {
@@ -110,6 +112,59 @@ final class XPCHelperClient: NSObject {
         return monitoringTask != nil
     }
     
+    func fetchDeviceBatteries(_ request: DeviceBatteryRequest) async throws -> DeviceBatteryResult {
+        let encoded = try JSONEncoder().encode(request)
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
+                _ = ensureRemoteService()
+                deviceBatteryReplies[request.id] = continuation
+                deviceBatteryDeadlines[request.id] = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(18))
+                    guard !Task.isCancelled, let self else { return }
+                    self.finishDeviceBatteryRequest(request.id, result: .failure(DeviceBatterySourceState.timedOut))
+                    self.cancelDeviceBatteryRequest(request.id)
+                }
+                let proxy = connection?.remoteObjectProxyWithErrorHandler { @Sendable [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        self?.finishDeviceBatteryRequest(request.id, result: .failure(DeviceBatterySourceState.unavailable))
+                    }
+                } as? BoringNotchXPCHelperProtocol
+                guard let proxy else {
+                    finishDeviceBatteryRequest(request.id, result: .failure(DeviceBatterySourceState.unavailable))
+                    return
+                }
+                proxy.fetchDeviceBatteries(encoded) { [weak self] data, failure in
+                    Task { @MainActor [weak self] in
+                        let result: Result<DeviceBatteryResult, Error>
+                        if let failure { result = .failure(DeviceBatterySourceState(rawValue: failure) ?? .unavailable) }
+                        else if let data, data.count <= 1_048_576,
+                                let decoded = try? JSONDecoder().decode(DeviceBatteryResult.self, from: data) {
+                            result = .success(decoded)
+                        } else { result = .failure(DeviceBatterySourceState.invalidResponse) }
+                        self?.finishDeviceBatteryRequest(request.id, result: result)
+                    }
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.cancelDeviceBatteryRequest(request.id) }
+        }
+    }
+
+    private func finishDeviceBatteryRequest(_ id: UUID, result: Result<DeviceBatteryResult, Error>) {
+        deviceBatteryDeadlines.removeValue(forKey: id)?.cancel()
+        deviceBatteryReplies.removeValue(forKey: id)?.resume(with: result)
+    }
+
+    func cancelDeviceBatteryRequest(_ id: UUID) {
+        finishDeviceBatteryRequest(id, result: .failure(DeviceBatterySourceState.cancelled))
+        // Never create a new connection merely to cancel an old request.
+        guard let service = remoteService else { return }
+        Task {
+            try? await service.withService { service in service.cancelDeviceBatteryRequest(id.uuidString) }
+        }
+    }
+
     // MARK: - Accessibility
 
     func fetchClaudeUsage(_ request: ClaudeUsageRequest) async throws -> ClaudeUsageResult {

@@ -1,7 +1,37 @@
 import Foundation
+import os
 @testable import Boring_Notch
 
 private final class StubHelper: NSObject, BoringNotchXPCHelperProtocol, Sendable {
+    private struct BatteryState {
+        var pending: [String: @Sendable (Data?, String?) -> Void] = [:]
+        var cancelled: Set<String> = []
+    }
+    private let battery = OSAllocatedUnfairLock(initialState: BatteryState())
+    var pendingBatteries: Int { battery.withLock { $0.pending.count } }
+    func didCancel(_ id: UUID) -> Bool { battery.withLock { $0.cancelled.contains(id.uuidString) } }
+    func fetchDeviceBatteries(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void) {
+        guard let query = try? JSONDecoder().decode(DeviceBatteryRequest.self, from: request) else {
+            reply(nil, DeviceBatterySourceState.invalidResponse.rawValue); return
+        }
+        if query.sources.isEmpty {
+            battery.withLock { $0.pending[query.id.uuidString] = reply }
+            return
+        }
+        let airPods = DeviceBatterySnapshot(id: "fixture", name: "AirPods", kind: .airPods, connectionState: .connected,
+            components: [.init(component: .left, percent: 0, readAt: Date(), provenance: .systemCache)])
+        reply(try? JSONEncoder().encode(DeviceBatteryResult(sources: [.init(source: .airPods, state: .available, devices: [airPods])])), nil)
+    }
+    func cancelDeviceBatteryRequest(_ id: String) {
+        let reply = battery.withLock { state in
+            state.cancelled.insert(id)
+            return state.pending.removeValue(forKey: id)
+        }
+        // Simulate a valid reply racing with cancellation; the client must ignore it.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+            reply?(try? JSONEncoder().encode(DeviceBatteryResult(sources: [])), nil)
+        }
+    }
     let authorized: Bool
     init(authorized: Bool) { self.authorized = authorized }
     func fetchClaudeUsage(_ request: Data, with reply: @escaping @Sendable (Data?, String?) -> Void) {
@@ -51,6 +81,12 @@ private final class StubListenerDelegate: NSObject, NSXPCListenerDelegate {
         connection.exportedObject = helper
         connection.resume()
         return true
+    }
+}
+
+private final class RejectingListenerDelegate: NSObject, NSXPCListenerDelegate {
+    func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
+        false
     }
 }
 
@@ -105,6 +141,27 @@ enum XPCRegressionChecks {
         let identity = try await client.fetchClaudeUsage(.init())
         try check(identity.account?.plan == "pro" && identity.snapshot == nil, "Claude identity-only flag must cross XPC")
 
+        let batteries = try await client.fetchDeviceBatteries(.init())
+        try check(batteries.sources.first?.devices.first?.components.first?.percent == 0, "Device battery zero survives real XPC serialization")
+        let pendingBattery = DeviceBatteryRequest(sources: [])
+        let batteryTask = Task { try await client.fetchDeviceBatteries(pendingBattery) }
+        let batteryDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while delegate.helper.pendingBatteries == 0 {
+            guard ContinuousClock.now < batteryDeadline else { throw NSError(domain: "BatteryXPC", code: 1) }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        batteryTask.cancel()
+        do { _ = try await batteryTask.value; try check(false, "Cancelled XPC must finish") }
+        catch let error as DeviceBatterySourceState { try check(error == .cancelled, "Cancellation resumes the caller") }
+        while !delegate.helper.didCancel(pendingBattery.id) {
+            guard ContinuousClock.now < batteryDeadline else { throw NSError(domain: "BatteryXPC", code: 2) }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try check(delegate.helper.didCancel(pendingBattery.id), "Cancellation reaches helper with exact request ID")
+        try await Task.sleep(for: .milliseconds(100))
+        try check(await client.currentKeyboardBrightness() == 0.25 && connections.count == 1,
+                  "Battery cancellation and late reply preserve the shared XPC connection")
+
         client.startMonitoringAccessibilityAuthorization(every: 0.01)
         try check(client.isMonitoring, "Authorization monitoring must start")
         client.startMonitoringAccessibilityAuthorization(every: 0.01)
@@ -140,6 +197,18 @@ enum XPCRegressionChecks {
             try check(false, "Claude Keychain failures must not be swallowed")
         } catch let failure as ClaudeUsageFailure {
             try check(failure == .permissionRequired, "Claude XPC errors must preserve their typed state")
+        }
+        let absentListener = NSXPCListener.anonymous()
+        let rejectingDelegate = RejectingListenerDelegate()
+        absentListener.delegate = rejectingDelegate
+        absentListener.resume()
+        defer { absentListener.invalidate(); withExtendedLifetime(rejectingDelegate) {} }
+        let absentClient = XPCHelperClient(connectionFactory: { NSXPCConnection(listenerEndpoint: absentListener.endpoint) })
+        do {
+            _ = try await absentClient.fetchDeviceBatteries(.init())
+            try check(false, "Rejected XPC connection must fail")
+        } catch let error as DeviceBatterySourceState {
+            try check(error == .unavailable, "XPC error callback crosses actors safely")
         }
         return checks
     }

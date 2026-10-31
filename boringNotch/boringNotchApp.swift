@@ -68,6 +68,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var isScreenLocked: Bool = false
     private var windowScreenDidChangeObserver: Any?
     private var dragDetectors: [String: DragDetector] = [:] // UUID -> DragDetector
+    private var deviceBatterySettingsObserver: AnyCancellable?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
@@ -79,6 +80,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WeatherManager.shared.stopBackgroundUpdates()
         CodexUsageManager.shared.stopBackgroundUpdates()
         ClaudeUsageManager.shared.stopBackgroundUpdates()
+        DeviceBatteryManager.shared.stopBackgroundUpdates()
+        deviceBatterySettingsObserver = nil
         if let observer = screenLockedObserver {
             DistributedNotificationCenter.default().removeObserver(observer)
             screenLockedObserver = nil
@@ -97,6 +100,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WeatherManager.shared.loadIfNeeded()
         CodexUsageManager.shared.loadIfNeeded()
         ClaudeUsageManager.shared.loadIfNeeded()
+        if Defaults[.showDeviceBatteries] { DeviceBatteryManager.shared.startBackgroundUpdates() }
+    }
+
+    @objc private func suspendDeviceBatteries(_ notification: Notification) {
+        DeviceBatteryManager.shared.stopBackgroundUpdates()
+    }
+
+    private func updateDeviceBatterySetting() {
+        if Defaults[.showDeviceBatteries] { DeviceBatteryManager.shared.startBackgroundUpdates() }
+        else { DeviceBatteryManager.shared.stopBackgroundUpdates(clear: true) }
     }
 
     @MainActor
@@ -302,6 +315,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WeatherManager.shared.startBackgroundUpdates()
         CodexUsageManager.shared.startBackgroundUpdates()
         ClaudeUsageManager.shared.startBackgroundUpdates()
+        if Defaults[.showDeviceBatteries] { DeviceBatteryManager.shared.startBackgroundUpdates() }
+        deviceBatterySettingsObserver = Defaults.publisher(.showDeviceBatteries)
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.updateDeviceBatterySetting() }
+            }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(suspendDeviceBatteries),
+            name: NSWorkspace.willSleepNotification, object: nil
+        )
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(refreshWeatherAfterWake),
             name: NSWorkspace.didWakeNotification, object: nil
