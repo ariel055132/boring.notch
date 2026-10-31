@@ -17,6 +17,7 @@
 - 後續修改前先確認目前程式碼與此快照的差異；行為、路徑或責任分工改變時，一併更新相關段落。
 - 2026-10-12 局部更新：以 `8f9b524` 加本次未提交變更核對 AI Usage／Claude／XPC 接線與測試（第 17 節）；其餘模組沿用原先驗證基準。
 - 2026-10-17 局部更新：以 `60a77e1` 核對 VolumeManager 與音訊回呼回歸測試（第 7、14 節）；其餘模組沿用原先驗證基準。
+- 2026-11-01 局部更新：以 `0395c81` 加本次功能變更核對 AirPods 電量摘要、XPC、設定與視窗生命週期（第 18 節）；本次依使用者指示保留 AirPods 並移至 Settings 左側，其餘模組沿用原先驗證基準。
 
 ## 1. 後續修改時先查這張表
 
@@ -49,6 +50,7 @@
 | HUD 外觀、位置、百分比 | [InlineHUD.swift](<boringNotch/components/Live activities/InlineHUD.swift>)、[SystemEventIndicatorModifier.swift](<boringNotch/components/Live activities/SystemEventIndicatorModifier.swift>)、[OpenNotchHUD.swift](<boringNotch/components/Live activities/OpenNotchHUD.swift>) | 收合／展開走不同元件，入口分別在 ContentView 與 BoringHeader；共用 `coordinator.sneakPeek` |
 | 亮度底層操作與輔助使用權限 | [XPCHelperClient.swift](boringNotch/XPCHelperClient/XPCHelperClient.swift)、[BoringNotchXPCHelper.swift](BoringNotchXPCHelper/BoringNotchXPCHelper.swift) | `ensureRemoteService`、`ensureAccessibilityAuthorization`、`setScreenBrightness`、`setKeyboardBrightness`；兩端各有 protocol 檔 |
 | 電池資料、充電提示、電池 popover | [BatteryActivityManager.swift](boringNotch/managers/BatteryActivityManager.swift)、[BatteryStatusViewModel.swift](boringNotch/models/BatteryStatusViewModel.swift)、[BoringBattery.swift](<boringNotch/components/Live activities/BoringBattery.swift>) | IOKit → `BatteryEvent` → `handleBatteryEvent` → `toggleExpandingView(type: .battery)` |
+| AirPods 左右耳／充電盒電量 | [DeviceBatteryIndicator.swift](boringNotch/components/Battery/DeviceBatteryIndicator.swift)、[DeviceBatteryManager.swift](boringNotch/managers/DeviceBatteryManager.swift)、[AirPodsBatteryReader.swift](BoringNotchXPCHelper/AirPodsBatteryReader.swift) | `showDeviceBatteries`、`fetchDeviceBatteries`／`cancelDeviceBatteryRequest`、`parseSystemReport`；展開後所有分頁上方、Settings 左側的圖示與百分比，詳見第 18 節 |
 | 行事曆／提醒事項 | [BoringCalendar.swift](boringNotch/components/Calendar/BoringCalendar.swift)、[CalendarMonth.swift](boringNotch/models/CalendarMonth.swift)、[CalendarManager.swift](boringNotch/managers/CalendarManager.swift)、[CalendarServiceProviding.swift](boringNotch/Providers/CalendarServiceProviding.swift) | `CalendarView`、`MonthCalendarView`、`CalendarMonth.eventsByDay`、`events(in:)`、`eventsRevision`、`setReminderCompleted`；`EventModel` 統一事件與提醒 |
 | 攝影機鏡子 | [WebcamManager.swift](boringNotch/managers/WebcamManager.swift)、[WebcamView.swift](boringNotch/components/Webcam/WebcamView.swift)、[BoringViewModel.swift](boringNotch/models/BoringViewModel.swift) | `toggleCameraPreview`、`startSession`、`stopSession`；`CameraCaptureControlling`／`CameraCaptureSession.configureIfNeeded` 管 session 操作 |
 | 設定鍵、設定頁、首次使用流程 | [Constants.swift](boringNotch/models/Constants.swift)、[SettingsView.swift](boringNotch/components/Settings/SettingsView.swift)、[OnboardingView.swift](boringNotch/components/Onboarding/OnboardingView.swift) | `Defaults.Keys`、各設定頁 struct、`OnboardingStep`；部分偏好存在 Coordinator 的 `@AppStorage` |
@@ -607,3 +609,31 @@ bash scripts/check-claude-usage.sh /path/to/DerivedData/Build/Products/Debug
 bash scripts/check-codex-usage.sh /path/to/DerivedData/Build/Products/Debug
 bash scripts/check-concurrency.sh /path/to/DerivedData/Build/Products/Debug
 ```
+
+
+## 18. AirPods 電量摘要（2026-11-01）
+
+本節以 `0395c81` 加 `codex/airpods-battery-indicator` 功能變更查證；設計與範圍縮減紀錄見 [r3 計劃](doc/device-battery-plan.md)／[類別圖](doc/device-battery-class-diagram.mmd)。本功能只讀 AirPods，既有 Mac 電池提示仍由 `BatteryActivityManager` 負責。
+
+### 入口與資料流
+
+1. [AppDelegate](boringNotch/boringNotchApp.swift) 依 [showDeviceBatteries](boringNotch/models/Constants.swift) 啟動唯一的 [DeviceBatteryManager](boringNotch/managers/DeviceBatteryManager.swift)；睡眠停止、喚醒重啟、停用時清除資料並取消請求。
+2. `DeviceBatteryManager.refreshIfNeeded` 正常每 60 秒查詢、失敗退避至最多 300 秒、手動重試冷卻 15 秒。注入 fetch／cancel／時鐘／sleep 以便離線驗證；每個部件獨立標舊與在 600 秒後清除百分比，不保存磁碟快取。
+3. [XPCHelperClient](boringNotch/XPCHelperClient/XPCHelperClient.swift) 透過既有連線的 `fetchDeviceBatteries` 傳送 [DeviceBatteryModels](boringNotch/models/DeviceBatteryModels.swift)；此檔為 App／helper 共用來源，`DeviceKind` 只有 `.airPods`。兩份 protocol 必須同步修改。
+4. [BoringNotchXPCHelper](BoringNotchXPCHelper/BoringNotchXPCHelper.swift) 呼叫共用 [DeviceBatteryProbe](BoringNotchXPCHelper/DeviceBatteryProbe.swift) actor；合併查詢並記錄請求擁有者，`cancelDeviceBatteryRequest` 依 UUID 取消，最後一個擁有者取消才終止程序。
+5. [AirPodsBatteryReader](BoringNotchXPCHelper/AirPodsBatteryReader.swift) 解析 `/usr/sbin/system_profiler SPBluetoothDataType -json` 的已連線裝置，以 Apple vendor／已知 product ID 篩選，MAC address 產生穩定識別碼；不由可改名的裝置名稱辨識 AirPods。
+6. [DeviceBatteryProcess](BoringNotchXPCHelper/DeviceBatteryProcess.swift) 將 Process、pipe 與 continuation 放在專用 queue，非同步讀取、限制 1 MiB 輸出與 12 秒期限；取消／逾時後終止並回收子程序。App XPC 另有 18 秒等待期限，晚到回覆只完成一次。
+
+### UI 與設定連動
+
+- [BoringHeader](boringNotch/components/Notch/BoringHeader.swift) 在 Settings 左側顯示 [DeviceBatteryIndicator](boringNotch/components/Battery/DeviceBatteryIndicator.swift)：AirPods 圖示＋`compactReading` 的較低耳電量，點擊沿用 `ScaleButtonStyle`；無讀值顯示 `—`。充電盒不參與摘要，左右耳與盒子均可在 [DeviceBatteryPopover](boringNotch/components/Battery/DeviceBatteryPopover.swift) 查看；多組裝置在面板內切換。已移除原底部列。
+- `BatteryComponentReading.readAt` 是最後取得該部件資料的查詢時間；系統報告沒有真正採樣時間，`sourceUpdatedAt` 為 nil。缺值不填 0、不推測充電狀態；舊資料有時鐘標記，過期顯示 `—`。
+- [Charge 設定頁](boringNotch/components/Settings/SettingsView.swift) 提供「Show AirPods batteries」，預設啟用。沒有 iPhone 設定或配對流程；不再隨附 iPhone 工具／runtime 或增加區域網路 usage description。
+- [matters.swift](boringNotch/sizing/matters.swift) 的 `openNotchSize`／`windowSize` 恢復固定 640 × 190／210 pt。AppDelegate 的 `updateDeviceBatterySetting` 只啟停背景工作；[BoringViewModel](boringNotch/models/BoringViewModel.swift) 的 `isAnyBatteryPopoverActive` 合併 Mac／AirPods popover 狀態以避免提早收合。
+
+### 驗證與限制
+
+- `bash scripts/check-device-batteries.sh /path/to/Build/Products/Debug`：36 項 reader／process 與 24 項 manager 檢查通過，使用實際來源及 Debug module；包含錯誤值、較低耳摘要與盒子排除、單獨部件過期、退避、取消及晚到回覆。
+- `bash scripts/check-concurrency.sh /path/to/Build/Products/Debug`：71 項並行／月曆／真實 anonymous XPC 檢查與 52 項音量回呼檢查通過。拒絕 XPC 連線的 fixture 已確認回呼能安全跨 actor。
+- 本機 Swift 6 Debug／已簽署 Release 建置成功；實際 SwiftUI 元件已渲染檢查上方 AirPods／Mac 電量並排、鏡頭／Settings／分頁全開且保留實體 notch 空間、詳細與未知狀態。完整已簽署 XPC 實機結果見計劃驗證紀錄。r3 已安裝並以實際 App 確認 Settings 左側的 AirPods 百分比與點擊明細（左右耳／充電盒）。
+- 未涵蓋 macOS 14／Intel、所有 AirPods 型號、所有盒蓋／切換音訊情境，以及完整 App 多螢幕滑鼠互動；系統未回報電量時只能顯示缺值或舊值。

@@ -352,6 +352,15 @@ struct Charge: View {
     var body: some View {
         Form {
             Section {
+                Defaults.Toggle(key: .showDeviceBatteries) {
+                    Text("Show AirPods batteries")
+                }
+                Text("AirPods batteries appear beside Settings in the open notch’s header.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } header: {
+                Text("AirPods Batteries")
+            }
+            Section {
                 Defaults.Toggle(key: .showBatteryIndicator) {
                     Text("Show battery indicator")
                 }

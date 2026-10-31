@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Read battery levels reported by this Mac for your AirPods.</string>
 	<key>XPCService</key>
 	<dict>
 		<!-- Access the user's login Keychain and show prompts after Connect. -->

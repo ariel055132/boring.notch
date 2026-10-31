@@ -159,6 +159,11 @@
 		AFC312000000000000000008 /* ClaudeUsageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC312000000000000000007 /* ClaudeUsageView.swift */; };
 		AFC31200000000000000000A /* ClaudeUsageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC312000000000000000001 /* ClaudeUsageModels.swift */; };
 		AFC31200000000000000000C /* AIUsageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC31200000000000000000B /* AIUsageView.swift */; };
+		AFDB31000000000000000100 /* DeviceBatteryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFDB31000000000000000000 /* DeviceBatteryModels.swift */; };
+		AFDB31000000000000000101 /* DeviceBatteryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFDB31000000000000000001 /* DeviceBatteryManager.swift */; };
+		AFDB31000000000000000102 /* DeviceBatteryIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFDB31000000000000000002 /* DeviceBatteryIndicator.swift */; };
+		AFDB31000000000000000103 /* DeviceBatteryPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFDB31000000000000000003 /* DeviceBatteryPopover.swift */; };
+		AFDB31000000000000000200 /* DeviceBatteryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFDB31000000000000000000; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -341,6 +346,10 @@
 		AFC312000000000000000005 /* ClaudeUsageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageManager.swift; sourceTree = "<group>"; };
 		AFC312000000000000000007 /* ClaudeUsageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeUsageView.swift; sourceTree = "<group>"; };
 		AFC31200000000000000000B /* AIUsageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageView.swift; sourceTree = "<group>"; };
+		AFDB31000000000000000000 /* DeviceBatteryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = boringNotch/models/DeviceBatteryModels.swift; sourceTree = SOURCE_ROOT; };
+		AFDB31000000000000000001 /* DeviceBatteryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = boringNotch/managers/DeviceBatteryManager.swift; sourceTree = SOURCE_ROOT; };
+		AFDB31000000000000000002 /* DeviceBatteryIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = boringNotch/components/Battery/DeviceBatteryIndicator.swift; sourceTree = SOURCE_ROOT; };
+		AFDB31000000000000000003 /* DeviceBatteryPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = boringNotch/components/Battery/DeviceBatteryPopover.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -581,6 +590,7 @@
 		14CEF4092C5CAED200855D72 = {
 			isa = PBXGroup;
 			children = (
+				AFDB31000000000000000300 /* Device Batteries */,
 				B0C51A000000000000000002 /* Configuration */,
 				112B0EB62E30DD0F00562D6C /* mediaremote-adapter */,
 				14CEF4142C5CAED300855D72 /* boringNotch */,
@@ -828,6 +838,7 @@
 			path = Usage;
 			sourceTree = "<group>";
 		};
+		AFDB31000000000000000300 /* Device Batteries */ = {isa = PBXGroup; children = (AFDB31000000000000000000,AFDB31000000000000000001,AFDB31000000000000000002,AFDB31000000000000000003,); name = "Device Batteries"; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -969,6 +980,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AFDB31000000000000000200 /* DeviceBatteryModels.swift in Sources */,
 				AFC30200000000000000000A /* CodexUsageModels.swift in Sources */,
 				AFC31200000000000000000A /* ClaudeUsageModels.swift in Sources */,
 			);
@@ -978,6 +990,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AFDB31000000000000000100 /* DeviceBatteryModels.swift in Sources */,
+				AFDB31000000000000000101 /* DeviceBatteryManager.swift in Sources */,
+				AFDB31000000000000000102 /* DeviceBatteryIndicator.swift in Sources */,
+				AFDB31000000000000000103 /* DeviceBatteryPopover.swift in Sources */,
 				115C12EC2ED3D003009754CA /* OpenNotchHUD.swift in Sources */,
 				14C08BB92C8DE4B1000F8AA0 /* BoringCalendar.swift in Sources */,
 				5955950D2E900ED800C66711 /* ApplicationRelauncher.swift in Sources */,

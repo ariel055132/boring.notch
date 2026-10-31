@@ -14,6 +14,8 @@ struct BoringHeader: View {
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @StateObject var tvm = ShelfStateViewModel.shared
     @Default(.boringShelf) private var enableShelf
+    @Default(.showDeviceBatteries) private var showDeviceBatteries
+    var deviceBatteryManager: DeviceBatteryManager = .shared
     var body: some View {
         HStack(spacing: 0) {
             HStack {
@@ -67,6 +69,9 @@ struct BoringHeader: View {
                                     }
                             }
                             .buttonStyle(PlainButtonStyle())
+                        }
+                        if showDeviceBatteries {
+                            DeviceBatteryIndicator(manager: deviceBatteryManager)
                         }
                         if Defaults[.settingsIconInNotch] {
                             Button(action: {
