@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan with Class Diagram"
+  short_description: "實作前先討論精簡類別圖，存入專案 doc 並等待 confirm"
+  default_prompt: "使用 $plan-with-class-diagram 規劃本次實作，將重點 Mermaid 類別圖存入 repo 的 doc 資料夾，等我 review 並回覆 confirm 後再開始實作。"
