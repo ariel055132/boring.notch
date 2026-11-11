@@ -23,6 +23,7 @@ xcrun swiftc -swift-version 6 -strict-concurrency=complete -warnings-as-errors \
   "$claude_repo_root/boringNotch/models/ClaudeUsageModels.swift" \
   "$claude_repo_root/BoringNotchXPCHelper/ClaudeUsageParser.swift" \
   "$claude_repo_root/BoringNotchXPCHelper/ClaudeUsageProbe.swift" \
+  "$claude_repo_root/BoringNotchXPCHelper/ClaudeUsageRenewal.swift" \
   "$claude_repo_root/BoringNotchXPCHelper/ClaudeUsageSecurityPreflight.swift" \
   "$claude_repo_root/BoringNotchXPCHelper/ClaudeUsageSecurityCommand.swift" \
   "$claude_repo_root/Tests/ClaudeUsageProbeChecks.swift" \
@@ -44,11 +45,21 @@ xcrun swiftc -swift-version 6 -strict-concurrency=complete -warnings-as-errors \
   "$claude_repo_root/boringNotch/models/ClaudeUsageModels.swift" \
   "$claude_repo_root/BoringNotchXPCHelper/ClaudeUsageParser.swift" \
   "$claude_repo_root/BoringNotchXPCHelper/ClaudeUsageProbe.swift" \
+  "$claude_repo_root/BoringNotchXPCHelper/ClaudeUsageRenewal.swift" \
   "$claude_repo_root/BoringNotchXPCHelper/ClaudeUsageSecurityPreflight.swift" \
   "$claude_repo_root/BoringNotchXPCHelper/ClaudeUsageSecurityCommand.swift" \
   "$claude_repo_root/Tests/ClaudeUsageSecurityCommandChecks.swift" \
   -o "$claude_build_dir/command-checks"
 "$claude_build_dir/command-checks" /usr/bin/python3 "$claude_repo_root/Tests/Fixtures/claude-keychain-command.py"
+
+xcrun swiftc -swift-version 6 -strict-concurrency=complete -warnings-as-errors \
+  -parse-as-library -target "$(uname -m)-apple-macos14.0" \
+  -module-cache-path "$claude_build_dir/module-cache" \
+  "$claude_repo_root/boringNotch/models/ClaudeUsageModels.swift" \
+  "$claude_repo_root/BoringNotchXPCHelper/ClaudeUsageRenewal.swift" \
+  "$claude_repo_root/Tests/ClaudeUsageRenewalChecks.swift" \
+  -o "$claude_build_dir/renewal-checks"
+"$claude_build_dir/renewal-checks" /usr/bin/python3 "$claude_repo_root/Tests/Fixtures/claude-renewal.py"
 
 xcrun swiftc -swift-version 6 -strict-concurrency=complete -warnings-as-errors \
   -parse-as-library -target "$(uname -m)-apple-macos14.0" \

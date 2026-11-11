@@ -135,7 +135,7 @@ final class ClaudeUsageManager: ObservableObject {
         guard !isLoading else { return }
         let date = now()
         let request: ClaudeUsageRequest
-        if !identityVerified {
+        if !identityVerified && (failure?.canAttemptRenewal != true || allowKeychainPrompt) {
             guard stored.nextIdentityAt.map({ date >= $0 }) ?? true else { return }
             request = .init(allowKeychainPrompt: allowKeychainPrompt)
             stored.nextIdentityAt = date.addingTimeInterval(Self.refreshInterval)
@@ -157,7 +157,7 @@ final class ClaudeUsageManager: ObservableObject {
                     refreshTask = nil
                     expireSnapshot()
                     updateAvailabilityAndTimer()
-                    if !request.usage, identityVerified { loadIfNeeded() }
+                    if !request.usage, identityVerified || failure?.canAttemptRenewal == true { loadIfNeeded() }
                 }
             }
             do {
@@ -236,7 +236,8 @@ final class ClaudeUsageManager: ObservableObject {
         timer = nil
         let date = now()
         retryAt = stored.blockedUntil.flatMap { $0 > date ? $0 : nil }
-        let deadline = identityVerified ? usageDeadline : (stored.nextIdentityAt ?? .distantPast)
+        let deadline = identityVerified || failure?.canAttemptRenewal == true
+            ? usageDeadline : (stored.nextIdentityAt ?? .distantPast)
         canRefresh = !isLoading && deadline <= date
         nextRefreshAt = deadline > date ? deadline : nil
         guard isRunning else { return }

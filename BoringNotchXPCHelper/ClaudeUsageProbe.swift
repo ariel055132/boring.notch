@@ -101,11 +101,15 @@ actor ClaudeUsageProbe {
 
     private let session: URLSession
     private let readCredential: @Sendable (Bool) async throws -> Data
+    private let renewCredential: @Sendable () async throws -> Void
     private let now: @Sendable () -> Date
     private var pending: [ClaudeUsageRequest: Task<ClaudeUsageResult, Never>] = [:]
+    private var pendingRenewal: Task<Void, Error>?
+    private var nextRenewalAt: Date = .distantPast
 
     init(session: URLSession? = nil,
          readCredential: @escaping @Sendable (Bool) async throws -> Data = { try await ClaudeUsageCredentialReader.read(allowInteraction: $0) },
+         renewCredential: @escaping @Sendable () async throws -> Void = { try await ClaudeUsageRenewalProcess.renew() },
          now: @escaping @Sendable () -> Date = { Date() }) {
         if let session { self.session = session }
         else {
@@ -118,6 +122,7 @@ actor ClaudeUsageProbe {
             self.session = URLSession(configuration: config)
         }
         self.readCredential = readCredential
+        self.renewCredential = renewCredential
         self.now = now
     }
 
@@ -133,36 +138,81 @@ actor ClaudeUsageProbe {
     private func query(_ request: ClaudeUsageRequest) async -> ClaudeUsageResult {
         var account: ClaudeUsageAccount?
         do {
-            let credential = try ClaudeUsageParser.credential(await readCredential(request.allowKeychainPrompt), at: now())
+            var credential = try ClaudeUsageParser.credential(await readCredential(request.allowKeychainPrompt),
+                                                              at: now(), allowExpired: request.usage)
             account = credential.account
             guard request.usage else { return .init(account: account) }
-            var query = URLRequest(url: Self.endpoint)
-            query.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
-            query.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
-            query.setValue("application/json", forHTTPHeaderField: "Accept")
-            query.setValue("BoringNotch/ClaudeUsage", forHTTPHeaderField: "User-Agent")
-            let (bytes, response) = try await session.bytes(for: query, delegate: ClaudeUsageRedirectGuard())
-            guard let http = response as? HTTPURLResponse else { throw ClaudeUsageFailure.invalidResponse }
-            guard http.statusCode == 200 else {
-                bytes.task.cancel()
-                throw ClaudeUsageParser.issue(for: http.statusCode,
-                    retryAfter: http.value(forHTTPHeaderField: "Retry-After"), at: now())
+            var renewed = false
+            if credential.isExpired(at: now()) {
+                credential = try await recover(credential)
+                account = credential.account
+                renewed = true
             }
-            var data = Data()
-            for try await byte in bytes {
-                guard data.count < ClaudeUsageParser.maximumResponseBytes else {
-                    bytes.task.cancel()
-                    throw ClaudeUsageFailure.invalidResponse
+            for _ in 0..<2 {
+                do {
+                    let snapshot = try await usage(credential)
+                    return .init(account: account, snapshot: snapshot)
+                } catch let issue as ClaudeUsageIssue where issue.failure == .expiredLogin {
+                    guard !renewed else { throw ClaudeUsageFailure.renewalFailed }
+                    credential = try await recover(credential)
+                    account = credential.account
+                    renewed = true
                 }
-                data.append(byte)
             }
-            let snapshot = try ClaudeUsageParser.snapshot(data, account: credential.account, at: now())
-            return .init(account: account, snapshot: snapshot)
+            throw ClaudeUsageFailure.renewalFailed
         } catch let error as URLError {
             return .init(account: account, issue: .init(failure: error.code == .timedOut ? .timedOut : .connection))
         } catch {
             // Neither the raw server body nor the credential is included in an error.
             return .init(account: account, issue: .from(error))
         }
+    }
+
+    private func recover(_ previous: ClaudeUsageCredential) async throws -> ClaudeUsageCredential {
+        // Claude Code may already have rotated the token while our HTTP request
+        // was in flight. Re-read before starting a second process.
+        let current = try ClaudeUsageParser.credential(await readCredential(false), at: now(), allowExpired: true)
+        if current.account != previous.account, !current.isExpired(at: now()) { return current }
+        guard current.canRenew else { throw ClaudeUsageFailure.expiredLogin }
+        if let pendingRenewal {
+            try await pendingRenewal.value
+        } else {
+            guard now() >= nextRenewalAt else { throw ClaudeUsageFailure.renewalFailed }
+            nextRenewalAt = now().addingTimeInterval(300)
+            let task = Task { try await renewCredential() }
+            pendingRenewal = task
+            defer { pendingRenewal = nil }
+            try await task.value
+        }
+        do {
+            // An acknowledged CLI request is not proof of a renewed credential.
+            return try ClaudeUsageParser.credential(await readCredential(false), at: now())
+        } catch ClaudeUsageFailure.expiredLogin {
+            throw ClaudeUsageFailure.renewalFailed
+        }
+    }
+
+    private func usage(_ credential: ClaudeUsageCredential) async throws -> ClaudeUsageSnapshot {
+        var query = URLRequest(url: Self.endpoint)
+        query.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+        query.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        query.setValue("application/json", forHTTPHeaderField: "Accept")
+        query.setValue("BoringNotch/ClaudeUsage", forHTTPHeaderField: "User-Agent")
+        let (bytes, response) = try await session.bytes(for: query, delegate: ClaudeUsageRedirectGuard())
+        guard let http = response as? HTTPURLResponse else { throw ClaudeUsageFailure.invalidResponse }
+        guard http.statusCode == 200 else {
+            bytes.task.cancel()
+            throw ClaudeUsageParser.issue(for: http.statusCode,
+                retryAfter: http.value(forHTTPHeaderField: "Retry-After"), at: now())
+        }
+        var data = Data()
+        for try await byte in bytes {
+            guard data.count < ClaudeUsageParser.maximumResponseBytes else {
+                bytes.task.cancel()
+                throw ClaudeUsageFailure.invalidResponse
+            }
+            data.append(byte)
+        }
+        return try ClaudeUsageParser.snapshot(data, account: credential.account, at: now())
     }
 }

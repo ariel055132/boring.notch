@@ -6,6 +6,10 @@ import Foundation
 struct ClaudeUsageCredential: Sendable {
     let accessToken: String
     let account: ClaudeUsageAccount
+    let expiresAt: Date?
+    let canRenew: Bool
+
+    func isExpired(at date: Date) -> Bool { expiresAt.map { $0 <= date } ?? false }
 }
 
 enum ClaudeUsageParser {
@@ -17,13 +21,15 @@ enum ClaudeUsageParser {
         struct OAuth: Decodable {
             let accessToken: String
             let expiresAt: Double?
+            let refreshToken: String?
+            let refreshTokenExpiresAt: Double?
             let subscriptionType: String?
             let scopes: [String]?
         }
         let claudeAiOauth: OAuth?
     }
 
-    static func credential(_ data: Data, at date: Date) throws -> ClaudeUsageCredential {
+    static func credential(_ data: Data, at date: Date, allowExpired: Bool = false) throws -> ClaudeUsageCredential {
         guard data.count <= maximumResponseBytes,
               let envelope = try? JSONDecoder().decode(CredentialEnvelope.self, from: data),
               let oauth = envelope.claudeAiOauth,
@@ -32,7 +38,7 @@ enum ClaudeUsageParser {
             throw ClaudeUsageFailure.notSignedIn
         }
         if let expiresAt = oauth.expiresAt {
-            guard expiresAt.isFinite, expiresAt / 1000 > date.timeIntervalSince1970 else {
+            guard expiresAt.isFinite, allowExpired || expiresAt / 1000 > date.timeIntervalSince1970 else {
                 throw ClaudeUsageFailure.expiredLogin
             }
         }
@@ -42,7 +48,10 @@ enum ClaudeUsageParser {
         let fingerprint = SHA256.hash(data: Data(oauth.accessToken.utf8))
             .map { String(format: "%02x", $0) }.joined()
         return .init(accessToken: oauth.accessToken,
-                     account: .init(credentialID: fingerprint, plan: oauth.subscriptionType))
+                     account: .init(credentialID: fingerprint, plan: oauth.subscriptionType),
+                     expiresAt: oauth.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000) },
+                     canRenew: oauth.refreshToken.map { !$0.isEmpty } == true
+                        && (oauth.refreshTokenExpiresAt.map { $0.isFinite && $0 / 1000 > date.timeIntervalSince1970 } ?? true))
     }
 
     private struct WindowPayload: Decodable {
