@@ -64,16 +64,19 @@ struct ClaudeUsageWindow: Codable, Identifiable, Sendable {
 
 enum ClaudeUsageFailure: String, Codable, Error, Sendable, LocalizedError {
     case notSignedIn, permissionRequired, expiredLogin, unsupportedAccount
+    case renewalFailed, renewalUnavailable
     case timedOut, connection, invalidResponse, usageUnavailable, rateLimited, dataExpired
 
     var needsConnection: Bool {
         switch self {
-        case .notSignedIn, .permissionRequired, .expiredLogin, .unsupportedAccount: true
+        case .notSignedIn, .permissionRequired, .expiredLogin, .unsupportedAccount, .renewalFailed, .renewalUnavailable: true
         default: false
         }
     }
 
     var invalidatesSnapshot: Bool { needsConnection || self == .usageUnavailable }
+
+    var canAttemptRenewal: Bool { self == .expiredLogin || self == .renewalFailed || self == .renewalUnavailable }
 
     var errorDescription: String? {
         switch self {
@@ -83,6 +86,10 @@ enum ClaudeUsageFailure: String, Codable, Error, Sendable, LocalizedError {
             String(localized: "Unlock your login keychain, or connect to allow Claude usage access through the macOS security tool.")
         case .expiredLogin:
             String(localized: "Your Claude Code sign-in has expired. Run /usage in Claude Code, then click Retry connection.")
+        case .renewalFailed:
+            String(localized: "Could not renew your Claude sign-in automatically. We'll retry, or you can run /usage in Claude Code.")
+        case .renewalUnavailable:
+            String(localized: "Automatic renewal needs a compatible Claude Code installation. Update Claude Code, or run /usage there and retry.")
         case .unsupportedAccount:
             String(localized: "Sign in to Claude Code with a Claude subscription to see your plan's usage.")
         case .timedOut:

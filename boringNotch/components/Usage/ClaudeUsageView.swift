@@ -131,7 +131,7 @@ struct ClaudeUsageView: View {
                     dashboardLink
                     if manager.failure?.needsConnection == true || manager.account == nil {
                         Button(action: manager.connect) {
-                            if manager.failure == .expiredLogin { Text("Retry connection") }
+                            if manager.failure?.canAttemptRenewal == true { Text("Retry connection") }
                             else { Text("Connect Claude Code") }
                         }
                         .buttonStyle(.borderless)

@@ -39,6 +39,7 @@ private final class ClaudeStub: ClaudeUsageServiceProviding {
     var requests: [ClaudeUsageRequest] = []
     var issue: ClaudeUsageIssue?
     var credentialFailure: ClaudeUsageFailure?
+    var identityFailure: ClaudeUsageFailure?
     var paused = false
     var mismatch = false
     private var pending: [CheckedContinuation<Void, Never>] = []
@@ -54,6 +55,7 @@ private final class ClaudeStub: ClaudeUsageServiceProviding {
         requests.append(request)
         if paused { await withCheckedContinuation { pending.append($0) } }
         if let credentialFailure { return .init(issue: .init(failure: credentialFailure)) }
+        if !request.usage, let identityFailure { return .init(issue: .init(failure: identityFailure)) }
         let value = ClaudeUsageSnapshot(account: mismatch ? .init(credentialID: "wrong", plan: "max") : account,
             windows: [.init(id: "five_hour", usedPercent: 3, resetsAt: nil)], fetchedAt: clock.now)
         return .init(account: account, snapshot: request.usage && issue == nil ? value : nil,
@@ -87,10 +89,50 @@ private struct ClaudeUsageRegressionChecks {
     static func main() async throws {
         try await schedulingAndRelaunch()
         try await identityAndReconnect()
+        try await automaticRenewalScheduling()
         try await backoffAndExpiry()
         try await cancellationAndPendingExpiry()
         try diskCache()
         print("Claude usage manager/cache checks passed: \(checks)")
+    }
+
+    static func automaticRenewalScheduling() async throws {
+        let clock = ClaudeClock(), store = ClaudeMemoryStore()
+        let (manager, service) = make(clock, store: store)
+        service.identityFailure = .expiredLogin
+        service.issue = .init(failure: .renewalFailed)
+        manager.startBackgroundUpdates()
+        try await settle(1, manager, service)
+        try expect(service.requests.map(\.usage) == [false, true], "Expired startup identity must proceed to a renewable usage request")
+        try expect(store.state.nextUsageAt == clock.now.addingTimeInterval(300), "Renewal must persist the HTTP deadline")
+        try expect(manager.failure == .renewalFailed && manager.snapshot == nil, "Failed renewal must be actionable without exposing stale account data")
+        for _ in 0..<5 {
+            manager.connect()
+            try await wait("Reconnect identity") { !manager.isLoading }
+        }
+        try expect(service.calls == 1, "Explicit Retry cannot bypass renewal cooldown")
+        manager.stopBackgroundUpdates()
+        let (relaunched, second) = make(clock, store: store)
+        second.identityFailure = .expiredLogin
+        relaunched.startBackgroundUpdates()
+        try expect(second.calls == 0, "Relaunch cannot bypass renewal cooldown")
+        clock.advance(300)
+        try await settle(1, relaunched, second)
+        try expect(relaunched.snapshot != nil && relaunched.failure == nil, "Background retries must publish recovered usage")
+        relaunched.stopBackgroundUpdates()
+
+        let blocked = ClaudeMemoryStore()
+        blocked.state.blockedUntil = clock.now.addingTimeInterval(7200)
+        let (limited, third) = make(clock, store: blocked)
+        defer { limited.stopBackgroundUpdates() }
+        third.identityFailure = .expiredLogin
+        limited.startBackgroundUpdates()
+        try await wait("Expired identity under rate limit") { limited.failure == .expiredLogin && !limited.isLoading }
+        try expect(third.calls == 0 && limited.nextRefreshAt == blocked.state.blockedUntil,
+                   "Credential renewal must respect the existing server rate-limit deadline")
+        limited.connect()
+        try await wait("Connect under rate limit") { !limited.isLoading }
+        try expect(third.calls == 0, "Connect must not use CLI renewal to bypass server rate limits")
     }
 
     static func schedulingAndRelaunch() async throws {

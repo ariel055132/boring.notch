@@ -49,6 +49,7 @@ private final class ClaudeHTTPStub: URLProtocol, @unchecked Sendable {
         var retryAfter: String?
         var error: URLError?
         var requests: [URLRequest] = []
+        var statusCodes: [Int] = []
     }
     static let state = OSAllocatedUnfairLock(initialState: State())
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -56,7 +57,9 @@ private final class ClaudeHTTPStub: URLProtocol, @unchecked Sendable {
     override func startLoading() {
         let reply = Self.state.withLock { value in
             value.requests.append(request)
-            return value
+            var reply = value
+            if !value.statusCodes.isEmpty { reply.status = value.statusCodes.removeFirst() }
+            return reply
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.02) { [self] in
             if let error = reply.error { client?.urlProtocol(self, didFailWithError: error); return }
@@ -87,16 +90,123 @@ private struct ClaudeUsageProbeChecks {
         catch let actual as ClaudeUsageFailure { try expect(actual == failure, message) }
     }
     static func credential(token: String = "fixture-access", expires: Double? = 1_800_001_000_000,
-                           scopes: [String] = ["user:profile"]) throws -> Data {
+                           scopes: [String] = ["user:profile"], refresh: String? = nil,
+                           refreshExpires: Double? = nil) throws -> Data {
         var oauth: [String: Any] = ["accessToken": token, "subscriptionType": "pro", "scopes": scopes]
         if let expires { oauth["expiresAt"] = expires }
+        if let refresh { oauth["refreshToken"] = refresh }
+        if let refreshExpires { oauth["refreshTokenExpiresAt"] = refreshExpires }
         return try JSONSerialization.data(withJSONObject: ["claudeAiOauth": oauth])
     }
     static func main() async throws {
         try keychainChecks()
         try parserChecks()
         try await transportChecks()
+        try await renewalChecks()
         print("Claude usage Keychain/parser/transport checks passed: \(checks)")
+    }
+
+    struct RenewalState: Sendable {
+        var data: Data
+        var reads = 0
+        var renewals = 0
+        var date = ClaudeUsageProbeChecks.date
+        var flags: [Bool] = []
+    }
+
+    static func renewalChecks() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ClaudeHTTPStub.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let expired = try credential(expires: date.timeIntervalSince1970 * 1000, refresh: "fixture-refresh")
+        let valid = try credential(refresh: "fixture-refresh")
+        let updated = try credential(token: "fixture-renewed", refresh: "fixture-refresh-rotated")
+        let state = OSAllocatedUnfairLock(initialState: RenewalState(data: expired))
+        func probe(replacement: Data, failure: ClaudeUsageFailure? = nil) -> ClaudeUsageProbe {
+            ClaudeUsageProbe(session: session, readCredential: { flag in
+                state.withLock { $0.reads += 1; $0.flags.append(flag); return $0.data }
+            }, renewCredential: {
+                state.withLock { $0.renewals += 1 }
+                try await Task.sleep(for: .milliseconds(30))
+                if let failure { throw failure }
+                state.withLock { $0.data = replacement }
+            }, now: { state.withLock { $0.date } })
+        }
+        ClaudeHTTPStub.state.withLock { $0 = .init(data: payload) }
+        let expiredProbe = probe(replacement: updated)
+        let identity = await expiredProbe.fetch(.init())
+        try expect(identity.issue?.failure == .expiredLogin && state.withLock { $0.renewals == 0 },
+                   "Local identity checks must never perform network renewal")
+        try expect(ClaudeHTTPStub.state.withLock { $0.requests.isEmpty }, "Expired identity must not send HTTP")
+        let recovered = await expiredProbe.fetch(.init(usage: true))
+        try expect(recovered.snapshot != nil && state.withLock { $0.renewals == 1 }, "Expired credentials must renew automatically")
+        try expect(ClaudeHTTPStub.state.withLock { $0.requests.count == 1 && $0.requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer fixture-renewed" },
+                   "Never send an already expired token to the usage endpoint")
+        try expect(state.withLock { $0.flags.allSatisfy { !$0 } }, "Automatic renewal must never request a Keychain prompt")
+
+        state.withLock { $0 = .init(data: valid) }
+        ClaudeHTTPStub.state.withLock { $0 = .init(data: payload, statusCodes: [401, 200]) }
+        let unauthorized = await probe(replacement: updated).fetch(.init(usage: true))
+        try expect(unauthorized.snapshot != nil && state.withLock { $0.renewals == 1 }, "401 must recover with one renewal")
+        try expect(ClaudeHTTPStub.state.withLock { $0.requests.map { $0.value(forHTTPHeaderField: "Authorization") } == ["Bearer fixture-access", "Bearer fixture-renewed"] },
+                   "Retry must use the newly read credential")
+        let encoded = String(decoding: try JSONEncoder().encode(unauthorized), as: UTF8.self)
+        try expect(!encoded.contains("fixture-refresh") && !encoded.contains("fixture-renewed"), "Renewed tokens must never cross XPC")
+
+        state.withLock { $0 = .init(data: valid) }
+        ClaudeHTTPStub.state.withLock { $0 = .init(status: 401, data: payload) }
+        let stillRejected = await probe(replacement: updated).fetch(.init(usage: true))
+        try expect(stillRejected.issue?.failure == .renewalFailed && state.withLock { $0.renewals == 1 }
+                   && ClaudeHTTPStub.state.withLock { $0.requests.count == 2 }, "Repeated 401 must stop without a renewal loop")
+
+        state.withLock { $0 = .init(data: expired) }
+        ClaudeHTTPStub.state.withLock { $0 = .init(data: payload) }
+        let unchanged = probe(replacement: expired)
+        for _ in 0..<3 {
+            let result = await unchanged.fetch(.init(usage: true))
+            try expect(result.issue?.failure == .renewalFailed && result.snapshot == nil, "CLI ack alone must not imply renewal success")
+        }
+        try expect(state.withLock { $0.renewals == 1 } && ClaudeHTTPStub.state.withLock { $0.requests.isEmpty },
+                   "Failed renewal must be throttled without sending expired bearer tokens")
+        state.withLock { $0.date.addTimeInterval(300) }
+        _ = await unchanged.fetch(.init(usage: true))
+        try expect(state.withLock { $0.renewals == 2 }, "Renewal can retry after the cooldown")
+
+        for failure in [ClaudeUsageFailure.connection, .timedOut, .renewalUnavailable] {
+            state.withLock { $0 = .init(data: expired) }
+            let result = await probe(replacement: updated, failure: failure).fetch(.init(usage: true))
+            try expect(result.issue?.failure == failure, "Transient renewal errors must not be mislabeled as expired login")
+        }
+        for data in [try credential(expires: 1, refresh: nil),
+                     try credential(expires: 1, refresh: "fixture-refresh", refreshExpires: 1)] {
+            state.withLock { $0 = .init(data: data) }
+            let result = await probe(replacement: updated).fetch(.init(usage: true))
+            try expect(result.issue?.failure == .expiredLogin && state.withLock { $0.renewals == 0 },
+                       "Missing or expired refresh credentials require official sign-in, not repeated CLI launches")
+        }
+        for (status, failure) in [(403, ClaudeUsageFailure.unsupportedAccount), (429, .rateLimited), (503, .connection)] {
+            state.withLock { $0 = .init(data: valid) }
+            ClaudeHTTPStub.state.withLock { $0 = .init(status: status, data: payload) }
+            let result = await probe(replacement: updated).fetch(.init(usage: true))
+            try expect(result.issue?.failure == failure && state.withLock { $0.renewals == 0 }, "Only authentication expiry may trigger renewal")
+        }
+        state.withLock { $0 = .init(data: expired) }
+        ClaudeHTTPStub.state.withLock { $0 = .init(data: payload) }
+        let parallel = probe(replacement: updated)
+        async let first = parallel.fetch(.init(usage: true))
+        async let second = parallel.fetch(.init(usage: true, allowKeychainPrompt: true))
+        let both = await [first, second]
+        try expect(both.allSatisfy { $0.snapshot != nil } && state.withLock { $0.renewals == 1 },
+                   "Overlapping requests must share one renewal even with different request flags")
+
+        state.withLock { $0 = .init(data: expired) }
+        let alreadyRotated = ClaudeUsageProbe(session: session, readCredential: { _ in
+            state.withLock { $0.reads += 1; return $0.reads == 1 ? expired : updated }
+        }, renewCredential: { state.withLock { $0.renewals += 1 } }, now: { date })
+        let result = await alreadyRotated.fetch(.init(usage: true))
+        try expect(result.snapshot != nil && state.withLock { $0.renewals == 0 },
+                   "Re-read credentials first to pick up renewal by another Claude Code process")
     }
 
     static func keychainChecks() throws {
